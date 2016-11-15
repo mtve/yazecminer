@@ -590,9 +590,64 @@ arg_parse (int argc, char **argv) {
 }
 
 void
+stat_print (void) {
+	time_t			time_cur, t1, t2;
+
+	time (&time_cur);
+	if (time_cur - time_last < TIME_STAT_PERIOD)
+		return;
+
+	t1 = time_cur - time_prev;
+	if (!t1)
+		t1 = 1;
+	t2 = time_cur - time_start;
+	if (!t2)
+		t2 = 1;
+	Log ("stat: cur %.2f Sol/s all %.2f Sol/s, total %d send %d "
+	    "ok %d jobs %d interrupts %d",
+	    (float)(stat_found_last + stat_found_cur) / t1,
+	    (float)stat_found / t2,
+	    stat_found, stat_submitted,
+	    stat_accepted, stat_jobs, stat_interrupts);
+	time_prev = time_last;
+	time_last = time_cur;
+	stat_found_last = stat_found_cur;
+	stat_found_cur = 0;
+}
+
+static void
+nonce2_print (void) {
+	int			i;
+
+	for (i = (int)sizeof (block.nonce) - 1; !block.nonce[i]
+	    && i > nonce1_len; i--)
+		;
+	printf ("nonce2 ");
+	for (; i >= nonce1_len; i--)
+		printf ("%02x", block.nonce[i]);
+	printf ("\n");
+}
+
+static void
+nonce2_reset (void) {
+	memset (block.nonce + nonce1_len, 0,
+	    sizeof (block.nonce) - nonce1_len);
+}
+
+static void
+nonce2_incr (void) {
+	int			i;
+
+	for (i = nonce1_len; i < (int)sizeof (block.nonce); i++)
+		if (++block.nonce[i])
+			break;
+	if (i == (int)sizeof (block.nonce))
+		die ("exhaused nonce");
+}
+
+void
 mine (void) {
 	int			i;
-	time_t			time_cur, t1, t2;
 
 	time (&time_start);
 	time_prev = time_last = time_start;
@@ -600,39 +655,11 @@ mine (void) {
 		periodic (0);
 		if (flag_new_job) {
 NEW_JOB:		flag_new_job = 0;
-			memset (block.nonce + nonce1_len, 0,
-			    sizeof (block.nonce) - nonce1_len);
+			nonce2_reset ();
 		}
-		if (flag_debug > 0) {
-			for (i = (int)sizeof (block.nonce) - 1; !block.nonce[i]
-			    && i > nonce1_len; i--)
-				;
-			printf ("nonce2 ");
-			for (; i >= nonce1_len; i--)
-				printf ("%02x", block.nonce[i]);
-			printf ("\n");
-		}
-
-		time (&time_cur);
-		if (time_cur - time_last > TIME_STAT_PERIOD) {
-			t1 = time_cur - time_prev;
-			if (!t1)
-				t1 = 1;
-			t2 = time_cur - time_start;
-			if (!t2)
-				t2 = 1;
-			Log ("stat: cur %.2f Sol/s all %.2f Sol/s, total %d send %d "
-			    "ok %d jobs %d interrupts %d\n",
-			    (float)(stat_found_last + stat_found_cur) / t1,
-			    (float)stat_found / t2,
-			    stat_found, stat_submitted,
-			    stat_accepted, stat_jobs, stat_interrupts);
-			time_prev = time_last;
-			time_last = time_cur;
-			stat_found_last = stat_found_cur;
-			stat_found_cur = 0;
-		}
-
+		if (flag_debug > 0)
+			nonce2_print ();
+		stat_print ();
 		step0 (&block);
 		for (i = 1; i <= WK; i++) {
 			periodic (0);
@@ -642,11 +669,7 @@ NEW_JOB:		flag_new_job = 0;
 			}
 			step (i);
 		}
-		for (i = nonce1_len; i < (int)sizeof (block.nonce); i++)
-			if (++block.nonce[i])
-				break;
-		if (i == (int)sizeof (block.nonce))
-			die ("exhaused nonce");
+		nonce2_incr ();
 	}
 }
 
