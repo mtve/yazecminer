@@ -276,63 +276,90 @@ check_sol () {
 	return solution ();
 }
 
+#define GENSTEP(step) \
+void \
+genstep##step (void) { \
+	const int	WORDS = MEM_WORDS (step); \
+	const int	WORDS_NEXT = MEM_WORDS (step + 1); \
+	const int	DECR = WORDS - WORDS_NEXT; \
+	l1_t		*l1f = step & 1 ? &l1a : &l1b; \
+	l1_t		*l1t = step & 1 ? &l1b : &l1a; \
+	int		i1, ia, a2, i3, ib, i; \
+	word_t		a212, c12; \
+	word_t		*pa, *pb, *pc; \
+	uint8_t		l3cnt[L2_BOXES]; \
+	word_t		*l3ptr[L2_BOXES][L3_STRINGS]; \
+	\
+	l1_init (l1t); \
+	for (i1 = 0; i1 < L1_BOXES; i1++) { \
+		memset (l3cnt, 0, sizeof (l3cnt)); \
+		\
+		for (ia = l1f->l2cnt[i1] - 1; ia >= 0; ia--) { \
+			pa = &l1f->l2mem[i1][ia * WORDS]; \
+			a212 = l212_val (step, pa); \
+			a2 = a212 >> STEP_BITS; \
+			i3 = l3cnt[a2]++; \
+			if (DEBUG) { \
+				if (i3 >= L3_STRINGS) \
+					die ("no l3"); \
+				if (ntree >= TREE_SIZE - L3_STRINGS) \
+					die ("no tree"); \
+			} \
+			l3ptr[a2][i3] = pa; \
+			for (ib = i3 - 1; ib >= 0; ib--) { \
+				pb = l3ptr[a2][ib]; \
+				\
+				if (step < WK && \
+				    pa[WORDS - 2] == pb[WORDS - 2]) { \
+					continue; \
+				} \
+				c12 = (a212 ^ l212_val (step, pb)) & \
+				    L12_MASK; \
+				if (step == WK && c12) \
+					continue; \
+				\
+				tree[ntree][0] = pa[WORDS - 1]; \
+				tree[ntree][1] = pb[WORDS - 1]; \
+				if (step == WK) { \
+					if (check_sol ()) \
+						return; \
+					continue; \
+				} \
+				pc = l1_addr (step + 1, l1t, c12 >> L2_BITS); \
+				for (i = 0; i < WORDS_NEXT - 1; i++) \
+					pc[i] = pa[i + DECR] ^ pb[i + DECR]; \
+				pc[WORDS_NEXT - 1] = ntree++; \
+			} \
+		} \
+	} \
+	if (DEBUG) { \
+		printf ("step %d tree %d/%d\n", step, ntree, TREE_SIZE); \
+		fflush (stdout); \
+	} \
+}
+
+GENSTEP(1)
+GENSTEP(2)
+GENSTEP(3)
+GENSTEP(4)
+GENSTEP(5)
+GENSTEP(6)
+GENSTEP(7)
+GENSTEP(8)
+GENSTEP(9)
+
 void
 step (int step) {
-	const int	WORDS = MEM_WORDS (step);
-	const int	WORDS_NEXT = MEM_WORDS (step + 1);
-	const int	DECR = WORDS - WORDS_NEXT;
-	l1_t		*l1f = step & 1 ? &l1a : &l1b;
-	l1_t		*l1t = step & 1 ? &l1b : &l1a;
-	int		i1, ia, a2, i3, ib, i;
-	word_t		a212, c12;
-	word_t		*pa, *pb, *pc;
-	uint8_t		l3cnt[L2_BOXES];
-	word_t		*l3ptr[L2_BOXES][L3_STRINGS];
-
-	l1_init (l1t);
-	for (i1 = 0; i1 < L1_BOXES; i1++) {
-		memset (l3cnt, 0, sizeof (l3cnt));
-		
-		for (ia = l1f->l2cnt[i1] - 1; ia >= 0; ia--) {
-			pa = &l1f->l2mem[i1][ia * WORDS];
-			a212 = l212_val (step, pa);
-			a2 = a212 >> STEP_BITS;
-			i3 = l3cnt[a2]++;
-			if (DEBUG) {
-				if (i3 >= L3_STRINGS)
-					die ("no l3");
-				if (ntree >= TREE_SIZE - L3_STRINGS)
-					die ("no tree");
-			}
-			l3ptr[a2][i3] = pa;
-			for (ib = i3 - 1; ib >= 0; ib--) {
-				pb = l3ptr[a2][ib];
-				
-				if (step < WK &&
-				    pa[WORDS - 2] == pb[WORDS - 2]) {
-					continue;
-				}
-				c12 = (a212 ^ l212_val (step, pb)) &
-				    L12_MASK;
-				if (step == WK && c12)
-					continue;
-					
-				tree[ntree][0] = pa[WORDS - 1];
-				tree[ntree][1] = pb[WORDS - 1];
-				if (step == WK) {
-					if (check_sol ())
-						return;
-					continue;
-				}
-				pc = l1_addr (step + 1, l1t, c12 >> L2_BITS);
-				for (i = 0; i < WORDS_NEXT - 1; i++)
-					pc[i] = pa[i + DECR] ^ pb[i + DECR];
-				pc[WORDS_NEXT - 1] = ntree++;
-			}
-		}
+	switch (step) {
+	case 1: genstep1 (); break;
+	case 2: genstep2 (); break;
+	case 3: genstep3 (); break;
+	case 4: genstep4 (); break;
+	case 5: genstep5 (); break;
+	case 6: genstep6 (); break;
+	case 7: genstep7 (); break;
+	case 8: genstep8 (); break;
+	case 9: genstep9 (); break;
+	default: die ("wtf");
 	}
-#if DEBUG
-	printf ("step %d tree %d/%d\n", step, ntree, TREE_SIZE);
-	fflush (stdout);
-#endif
 }
