@@ -551,6 +551,7 @@ usage (char **argv) {
 void
 arg_parse (int argc, char **argv) {
 	int		i;
+	char		*p;
 
 	for (i = 1; i < argc; i++) {
 		if (argv[i][0] != '-')
@@ -564,6 +565,11 @@ arg_parse (int argc, char **argv) {
 		switch (argv[i++][1]) {
 		case 'l':
 			strncpy (pool_host, argv[i], BUF_SIZE);
+			p = strchr (pool_host, ':');
+			if (p) {
+				*p++ = 0;
+				pool_port = atoi (p);
+			}
 			break;
 		case 'P':
 			pool_port = atoi (argv[i]);
