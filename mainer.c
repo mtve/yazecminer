@@ -51,6 +51,7 @@ static int			flag_new_job = 0;
 static time_t			time_start;
 
 static int			stat_found = 0;
+static int			stat_interrupts = 0;
 static int			stat_submitted = 0;
 static int			stat_accepted = 0;
 
@@ -572,8 +573,11 @@ NEW_JOB:		flag_new_job = 0;
 			    sizeof (block.nonce) - nonce1_len);
 		}
 		if (flag_debug > 0) {
+			for (i = (int)sizeof (block.nonce) - 1; !block.nonce[i]
+			    && i > nonce1_len; i--)
+				;
 			printf ("nonce2 ");
-			for (i = nonce1_len; i < (int)sizeof (block.nonce); i++)
+			for (; i >= nonce1_len; i--)
 				printf ("%02x", block.nonce[i]);
 			printf ("\n");
 		}
@@ -582,17 +586,18 @@ NEW_JOB:		flag_new_job = 0;
 		time_cur -= time_start;
 		if (!time_cur)
 			time_cur = 1;
-		printf ("stat: found %.2f Sol/s accepted %.2f Sol/s, "
-			"total found %d submitted %d accepted %d\n",
-		    (float)stat_found / time_cur,
-		    (float)stat_accepted / time_cur,
-		    stat_found, stat_submitted, stat_accepted);
+		printf ("stat: %.2f Sol/s, total %d submitted %d "
+		    "accepted %d interrupts %d\n",
+		    (float)stat_found / time_cur, stat_found, stat_submitted,
+		    stat_accepted, stat_interrupts);
 
 		step0 (&block);
 		for (i = 1; i <= WK; i++) {
 			periodic (0);
-			if (flag_new_job)
+			if (flag_new_job) {
+				stat_interrupts++;
 				goto NEW_JOB;
+			}
 			step (i);
 		}
 		for (i = nonce1_len; i < (int)sizeof (block.nonce); i++)
