@@ -692,7 +692,7 @@ main (int argc, char **argv) {
 	Log ("connecting to %s:%d", pool_host, pool_port);
 	if (sock_fh < 0)
 		sock_open ();
-	Log ("connected!\n");
+	Log ("connected!");
 	send_subscribe ();
 	for (i = 0; !flag_new_job && i < 10; i++)
 		periodic (1000);
