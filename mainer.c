@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -22,6 +23,7 @@
 #define VERSION			"04000000"
 #define BUF_SIZE		4096
 #define JSON_TOKENS_MAX		64
+#define TIME_STAT_PERIOD	15
 
 static char			pool_host[BUF_SIZE] = "127.0.0.1";
 static int			pool_port = 3333;
@@ -49,11 +51,16 @@ static char			job_id[BUF_SIZE];
 static uint8_t			target[SHA256_DIGEST_SIZE] = { 0 };
 static int			flag_new_job = 0;
 static time_t			time_start;
+static time_t			time_last;
+static time_t			time_prev;
 
+static int			stat_jobs = 0;
 static int			stat_found = 0;
 static int			stat_interrupts = 0;
 static int			stat_submitted = 0;
 static int			stat_accepted = 0;
+static int			stat_found_last = 0;
+static int			stat_found_cur = 0;
 
 #define JSONRPC_ID_SUBSCRIBE	1
 #define JSONRPC_ID_AUTHORIZE	2
@@ -62,6 +69,26 @@ static int			stat_accepted = 0;
 
 static void			send_authorize (void);
 static void			send_extranonce (void);
+
+static void
+Log (char *fmt, ...) {
+	time_t			t;
+	static char		buf[30];
+	struct tm		*tm_info;
+	va_list			ap;
+
+	time (&t);
+	tm_info = localtime (&t);
+	strftime (buf, sizeof (buf), "%Y-%m-%d %H:%M:%S", tm_info);
+	printf ("%s ", buf);
+
+	va_start (ap, fmt);
+	vfprintf (stdout, fmt, ap);
+	va_end (ap);
+
+	printf ("\n");
+	fflush (stdout);
+}
 
 static void
 die (char *str) {
@@ -124,7 +151,7 @@ recv_target (void) {
 		die ("mining.target params size is not 1");
 
 	unhex (target, SHA256_DIGEST_SIZE, json_string (7));
-	printf ("got target %s\n", &JSON_FIRST_CHAR (7));
+	Log ("got target %s", &JSON_FIRST_CHAR (7));
 
 	send_extranonce ();
 }
@@ -149,8 +176,9 @@ recv_job (void) {
 	if (json_token[14].type != JSMN_PRIMITIVE)
 	    die ("mining.notify bad clean_jobs");
 
-	printf ("got job %s\n", job_id);
-	flag_new_job++;
+	Log ("new job %s", job_id);
+	stat_jobs++;
+	flag_new_job = 1;
 }
 
 static void
@@ -167,7 +195,7 @@ recv_subscribed (void) {
 		die ("nonce1 is too big");
 	unhex (block.nonce, nonce1_len, nonce1);
 
-	printf ("subscribed, session id is %s, nonce1 %s len %d\n",
+	Log ("subscribed, session id is %s, nonce1 %s len %d",
 	    json_string (5), nonce1, nonce1_len);
 
 	send_authorize ();
@@ -179,7 +207,7 @@ recv_authorized (void) {
 	    JSON_FIRST_CHAR (4) != 't')
 		die ("not authorized");
 
-	printf ("authorized\n");
+	Log ("authorized");
 }
 
 static void
@@ -236,7 +264,7 @@ json_do_response (void) {
 		if (json_token[4].type != JSMN_PRIMITIVE ||
 		    JSON_FIRST_CHAR (4) != 't')
 			die ("not accepted");
-		printf ("job submit %d accepted\n", id);
+		Log ("submit %d accepted", id);
 		stat_accepted++;
 	}
 }
@@ -404,7 +432,7 @@ above_target (void) {
 	sha256 (diff, SHA256_DIGEST_SIZE, diff);
 
 	if (flag_debug > 1) {
-		printf ("difficulty ");
+		printf ("sol difficulty ");
 		for (i = 0; i < SHA256_DIGEST_SIZE; i++) {
 			printf ("%02x", diff[SHA256_DIGEST_SIZE - 1 - i]);
 		}
@@ -428,8 +456,10 @@ solution (void) {
 	char		job_time[sizeof (block.time) * 2 + 1];
 
 	stat_found++;
+	stat_found_cur++;
 	if (above_target ()) {
-		printf ("above target\n");
+		if (flag_debug)
+			printf ("above target\n");
 		return 0;
 	}
 
@@ -441,7 +471,7 @@ solution (void) {
 	send_submit (job_time, nonce2, solution);
 	stat_submitted++;
 
-	printf ("new solution\n");
+	Log ("solution to %s submitted", job_id);
 	return 1;
 }
 
@@ -503,7 +533,7 @@ bench (int r) {
 		for (i = 1; i <= WK; i++)
 			step (i);
 	}
-	printf ("finished, %d total solutions\n", stat_found);
+	Log ("finished, %d total solutions", stat_found);
 }
 
 static void
@@ -562,9 +592,10 @@ arg_parse (int argc, char **argv) {
 void
 mine (void) {
 	int			i;
-	time_t			time_cur;
+	time_t			time_cur, t1, t2;
 
 	time (&time_start);
+	time_prev = time_last = time_start;
 	for (;;) {
 		periodic (0);
 		if (flag_new_job) {
@@ -583,13 +614,24 @@ NEW_JOB:		flag_new_job = 0;
 		}
 
 		time (&time_cur);
-		time_cur -= time_start;
-		if (!time_cur)
-			time_cur = 1;
-		printf ("stat: %.2f Sol/s, total %d submitted %d "
-		    "accepted %d interrupts %d\n",
-		    (float)stat_found / time_cur, stat_found, stat_submitted,
-		    stat_accepted, stat_interrupts);
+		if (time_cur - time_last > TIME_STAT_PERIOD) {
+			t1 = time_cur - time_prev;
+			if (!t1)
+				t1 = 1;
+			t2 = time_cur - time_start;
+			if (!t2)
+				t2 = 1;
+			Log ("stat: cur %.2f Sol/s all %.2f Sol/s, total %d send %d "
+			    "ok %d jobs %d interrupts %d\n",
+			    (float)(stat_found_last + stat_found_cur) / t1,
+			    (float)stat_found / t2,
+			    stat_found, stat_submitted,
+			    stat_accepted, stat_jobs, stat_interrupts);
+			time_prev = time_last;
+			time_last = time_cur;
+			stat_found_last = stat_found_cur;
+			stat_found_cur = 0;
+		}
 
 		step0 (&block);
 		for (i = 1; i <= WK; i++) {
@@ -614,8 +656,8 @@ main (int argc, char **argv) {
 
 	setvbuf (stdout, NULL, _IONBF, 0);
 
-	printf ("Yet Another ZEC Miner, CPU miner for https://z.cash/\n");
-	printf ("BLAKE2b implementation: %s\n", blake2b_info ());
+	Log ("Yet Another ZEC Miner, CPU miner for https://z.cash/");
+	Log ("BLAKE2b implementation: %s", blake2b_info ());
 
 	arg_parse (argc, argv);
 
@@ -624,10 +666,10 @@ main (int argc, char **argv) {
 		return 0;
 	}
 
-	printf ("connecting to %s:%d\n", pool_host, pool_port);
+	Log ("connecting to %s:%d", pool_host, pool_port);
 	if (sock_fh < 0)
 		sock_open ();
-	printf ("connected!\n");
+	Log ("connected!\n");
 	send_subscribe ();
 	for (i = 0; !flag_new_job && i < 10; i++)
 		periodic (1000);
