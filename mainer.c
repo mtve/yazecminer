@@ -93,8 +93,8 @@ Log (char *fmt, ...) {
 static void
 die (char *str) {
 	if (str[0] == '!') {
-		str++;
 		printf ("error %d (%s), ", errno, strerror (errno));
+		str++;
 	}
 	printf ("%s, exiting\n", str);
 	exit (1);
@@ -132,6 +132,21 @@ hex (char *dst, unsigned char *src, int len) {
 	*dst = 0;
 }
 
+static void
+json_debug (void) {
+	int			i;
+
+	for (i = 0; i < json_tokens; i++)
+		printf ("token %d: %s, start %d '%c' end %d '%c' size %d\n", i,
+		    json_token[i].type == JSMN_PRIMITIVE? "primitive" :
+		    json_token[i].type == JSMN_OBJECT	? "object" :
+		    json_token[i].type == JSMN_ARRAY	? "array" :
+		    json_token[i].type == JSMN_STRING	? "string" : "?",
+		    json_token[i].start, JSON_FIRST_CHAR (i),
+		    json_token[i].end, in_buf[ json_token[i].end ],
+		    json_token[i].size);
+}
+
 static char *
 json_string (int t) {
 	if (json_token[t].type != JSMN_STRING)
@@ -143,6 +158,13 @@ json_string (int t) {
 static int
 json_is_string (int t, char *str) {
 	return !strcmp (json_string (t), str);
+}
+
+static int
+json_num (int t) {
+	if (json_token[t].type != JSMN_PRIMITIVE)
+		die ("not a number");
+	return atoi (&JSON_FIRST_CHAR (t));
 }
 
 static int
@@ -267,6 +289,7 @@ json_do_notification (void) {
 
 	method = json_object_key (0, "method");
 	params = json_object_key (0, "params");
+
 	if (json_token[params].type != JSMN_ARRAY)
 		die ("notify param is not array");
 
@@ -295,8 +318,9 @@ json_do_response (int id) {
 	} else {
 		error = json_object_key_or_null (0, "error");
 		if (error) {
-			if (json_token[error].type == JSMN_PRIMITIVE &&
-			    atoi (&JSON_FIRST_CHAR (error)) == 21) {
+			if (json_token[error].type == JSMN_ARRAY &&
+			    json_token[error].size > 0 &&
+			    json_num (error + 1) == 21) {
 				Log ("error 21 stale job not accepted");
 				return;
 			}
@@ -312,18 +336,10 @@ json_do_response (int id) {
 
 static void
 json_do (void) {
-	int		i, id;
+	int		id;
 
-	for (i = 0; flag_debug > 2 && i < json_tokens; i++)
-		printf ("token %d: %s, start %d '%c' end %d '%c' size %d\n", i,
-		    json_token[i].type == JSMN_PRIMITIVE? "primitive" :
-		    json_token[i].type == JSMN_OBJECT	? "object" :
-		    json_token[i].type == JSMN_ARRAY	? "array" :
-		    json_token[i].type == JSMN_STRING	? "string" : "???",
-		    json_token[i].start, JSON_FIRST_CHAR (i),
-		    json_token[i].end, in_buf[ json_token[i].end ],
-		    json_token[i].size);
-
+	if (flag_debug > 2)
+		json_debug ();
 	/*
 	 * we expect only notifications
 	 *   { id:null, method:"", params:[] }
@@ -334,13 +350,14 @@ json_do (void) {
 	id = json_object_key (0, "id");
 	if (json_token[id].type != JSMN_PRIMITIVE)
 		die ("id is not primitive");
+
 	if (JSON_FIRST_CHAR (id) == 'n' ||
 	    JSON_FIRST_CHAR (id) == '0')
 		json_do_notification ();
 	else if (
 	    JSON_FIRST_CHAR (id) >= '1' &&
 	    JSON_FIRST_CHAR (id) <= '9')
-		json_do_response (atoi (&JSON_FIRST_CHAR (id)));
+		json_do_response (json_num (id));
 	else
 		die ("'id' value is boolean?");
 }
@@ -698,7 +715,10 @@ mine (void) {
 	for (;;) {
 		periodic (0);
 		if (flag_new_job) {
-NEW_JOB:		flag_new_job = 0;
+#if 0
+NEW_JOB:
+#endif
+			flag_new_job = 0;
 			nonce2_reset ();
 		}
 		if (flag_debug > 0)
