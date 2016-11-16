@@ -145,35 +145,87 @@ json_is_string (int t, char *str) {
 	return !strcmp (json_string (t), str);
 }
 
+static int
+json_next (int pos) {
+	int		i, n = pos + 1;
+
+	switch (json_token[pos].type) {
+	case JSMN_PRIMITIVE:
+	case JSMN_STRING:
+		break;
+	case JSMN_OBJECT:
+		for (i = 0; i < json_token[pos].size; i++) {
+			(void)json_string (n++);
+			n = json_next (n);
+		}
+		break;
+	case JSMN_ARRAY:
+		for (i = 0; i < json_token[pos].size; i++)
+			n = json_next (n);
+		break;
+	default:
+		die ("wtf");
+	}
+	return n;
+}
+
+static int
+json_object_key_or_null (int obj, char *key) {
+	int			i, pos;
+
+	if (json_token[obj].type != JSMN_OBJECT)
+		die ("token is not an object");
+
+	pos = obj + 1;
+	for (i = 0; i < json_token[obj].size; i++) {
+		if (json_is_string (pos++, key))
+			return pos;
+		pos = json_next (pos);
+	}
+	return 0;
+}
+
+static int
+json_object_key (int obj, char *key) {
+	int			i;
+
+	i = json_object_key_or_null (obj, key);
+	if (!i)
+		die ("no needed key");
+	return i;
+}
+
 static void
-recv_target (void) {
-	if (json_token[6].size != 1)
+recv_target (int params) {
+	if (json_token[params].size != 1)
 		die ("mining.target params size is not 1");
 
-	unhex (target, SHA256_DIGEST_SIZE, json_string (7));
-	Log ("got target %s", &JSON_FIRST_CHAR (7));
+	unhex (target, SHA256_DIGEST_SIZE, json_string (params + 1));
+	Log ("got target %s", &JSON_FIRST_CHAR (params + 1));
 
 	send_extranonce ();
 }
 
 static void
-recv_job (void) {
-	if (json_token[6].size != 8)
+recv_job (int params) {
+	if (json_token[params].size != 8)
 		die ("mining.notify params size is not 8");
 
-	if (!json_is_string (8, VERSION))
+	if (!json_is_string (params + 2, VERSION))
 		die ("mining.notify bad version");
 
-	strncpy (job_id, json_string (7), BUF_SIZE);
+	strncpy (job_id, json_string (params + 1), BUF_SIZE);
 
-	unhex (block.version,    sizeof (block.version),    json_string (8));
-	unhex (block.prevhash,   sizeof (block.prevhash),   json_string (9));
-	unhex (block.merkleroot, sizeof (block.merkleroot), json_string (10));
-	unhex (block.reserved,   sizeof (block.reserved),   json_string (11));
-	unhex (block.time,       sizeof (block.time),       json_string (12));
-	unhex (block.bits,       sizeof (block.bits),       json_string (13));
+#define U(x,o) unhex (block.x, sizeof (block.x), json_string (params + o))
+	U (version,	2);
+	U (prevhash,	3);
+	U (merkleroot,	4);
+	U (reserved,	5);
+	U (time,	6);
+	U (bits,	7);
+#undef U
 
-	if (json_token[14].type != JSMN_PRIMITIVE)
+	if (json_token[params + 8].type != JSMN_PRIMITIVE)
 	    die ("mining.notify bad clean_jobs");
 
 	Log ("new job %s", job_id);
@@ -182,29 +234,28 @@ recv_job (void) {
 }
 
 static void
-recv_subscribed (void) {
+recv_subscribed (int result) {
 	char		*nonce1;
 
-	if (json_token[4].type != JSMN_ARRAY ||
-	    json_token[4].size != 2)
+	if (json_token[result].type != JSMN_ARRAY ||
+	    json_token[result].size != 2)
 		die ("bad subscribe response");
 
-	nonce1 = json_string (6);
+	nonce1 = json_string (result + 2);
 	nonce1_len = strlen (nonce1) / 2;
 	if (nonce1_len >= (int)sizeof (block.nonce))
 		die ("nonce1 is too big");
 	unhex (block.nonce, nonce1_len, nonce1);
 
-	Log ("subscribed, session id is %s, nonce1 %s len %d",
-	    json_string (5), nonce1, nonce1_len);
+	Log ("subscribed, nonce1 %s len %d", nonce1, nonce1_len);
 
 	send_authorize ();
 }
 
 static void
-recv_authorized (void) {
-	if (json_token[4].type != JSMN_PRIMITIVE ||
-	    JSON_FIRST_CHAR (4) != 't')
+recv_authorized (int result) {
+	if (json_token[result].type != JSMN_PRIMITIVE ||
+	    JSON_FIRST_CHAR (result) != 't')
 		die ("not authorized");
 
 	Log ("authorized");
@@ -212,58 +263,48 @@ recv_authorized (void) {
 
 static void
 json_do_notification (void) {
-	if (!json_is_string (3, "method"))
-		die ("notify has no method");
+	int		method, params;
 
-	if (!json_is_string (5, "params"))
-		die ("notify has no params");
-	if (json_token[6].type != JSMN_ARRAY)
+	method = json_object_key (0, "method");
+	params = json_object_key (0, "params");
+	if (json_token[params].type != JSMN_ARRAY)
 		die ("notify param is not array");
 
-	if (json_is_string (4, "mining.target") ||
-	    json_is_string (4, "mining.set_target")) {
-		recv_target ();
-	} else if (json_is_string (4, "mining.notify")) {
-		recv_job ();
+	if (json_is_string (method, "mining.target") ||
+	    json_is_string (method, "mining.set_target")) {
+		recv_target (params);
+	} else if (json_is_string (method, "mining.notify")) {
+		recv_job (params);
 	} else {
 		die ("bad notify method");
 	}
 }
 
 static void
-json_do_response (void) {
-	int		i = 5, id;
+json_do_response (int id) {
+	int		result, error;
 
-	id = atoi (&JSON_FIRST_CHAR (2));
-
-	if (!json_is_string (3, "result"))
-		die ("not a result");
-
-	if (json_token[4].type == JSMN_ARRAY) {
-		for (i = 5; i < 5 + json_token[4].size; i++)
-			if (json_token[i].type != JSMN_PRIMITIVE &&
-			    json_token[i].type != JSMN_STRING)
-				die ("result array is complex");
-	} else if (json_token[4].type != JSMN_PRIMITIVE) {
-		die ("result is not an array or primitive\n");
-	}
-
-	if (json_token[0].size >= 3 && 
-	    !json_is_string (i, "error") &&
-	    (json_token[i + 1].type != JSMN_PRIMITIVE ||
-	    JSON_FIRST_CHAR (i + 1) != 'n'))
-		die ("XXX response error");
+	result = json_object_key (0, "result");
 
 	if (id == JSONRPC_ID_SUBSCRIBE) {
-		recv_subscribed ();
+		recv_subscribed (result);
 	} else if (id == JSONRPC_ID_AUTHORIZE) {
-		recv_authorized ();
+		recv_authorized (result);
 	} else if (id == JSONRPC_ID_EXTRANONCE) {
-		die ("extranonce response unexpected");
+		Log ("extranonce response unexpected");
 	} else {
-		if (json_token[4].type != JSMN_PRIMITIVE ||
-		    JSON_FIRST_CHAR (4) != 't')
-			die ("not accepted");
+		error = json_object_key_or_null (0, "error");
+		if (error) {
+			if (json_token[error].type == JSMN_PRIMITIVE &&
+			    atoi (&JSON_FIRST_CHAR (error)) == 21) {
+				Log ("error 21 stale job not accepted");
+				return;
+			}
+			if (json_token[error].type != JSMN_PRIMITIVE)
+				die ("not accepted");
+			if (JSON_FIRST_CHAR (error) != 'n')
+				die ("error is primitive not null");
+		}
 		Log ("submit %d accepted", id);
 		stat_accepted++;
 	}
@@ -271,7 +312,7 @@ json_do_response (void) {
 
 static void
 json_do (void) {
-	int		i;
+	int		i, id;
 
 	for (i = 0; flag_debug > 2 && i < json_tokens; i++)
 		printf ("token %d: %s, start %d '%c' end %d '%c' size %d\n", i,
@@ -289,20 +330,17 @@ json_do (void) {
 	 * or responses
 	 *   { id:1, result:[], error:null }
 	 */
-	if (json_token[0].type != JSMN_OBJECT)
-		die ("first token is not an object");
-	if (json_token[0].size < 2)
-		die ("expecting at least two keys in top object");
-	if (!json_is_string (1, "id"))
-		die ("expecting first key 'id'");
-	if (json_token[2].type != JSMN_PRIMITIVE)
-		die ("'id' value is not primitive");
 
-	if (JSON_FIRST_CHAR (2) == 'n' ||
-	    JSON_FIRST_CHAR (2) == '0')
+	id = json_object_key (0, "id");
+	if (json_token[id].type != JSMN_PRIMITIVE)
+		die ("id is not primitive");
+	if (JSON_FIRST_CHAR (id) == 'n' ||
+	    JSON_FIRST_CHAR (id) == '0')
 		json_do_notification ();
-	else if (JSON_FIRST_CHAR (2) >= '1' && JSON_FIRST_CHAR (2) <= '9')
-		json_do_response ();
+	else if (
+	    JSON_FIRST_CHAR (id) >= '1' &&
+	    JSON_FIRST_CHAR (id) <= '9')
+		json_do_response (atoi (&JSON_FIRST_CHAR (id)));
 	else
 		die ("'id' value is boolean?");
 }
@@ -668,11 +706,13 @@ NEW_JOB:		flag_new_job = 0;
 		stat_print ();
 		step0 (&block);
 		for (i = 1; i <= WK; i++) {
+#if 0
 			periodic (0);
 			if (flag_new_job) {
 				stat_interrupts++;
 				goto NEW_JOB;
 			}
+#endif
 			step (i);
 		}
 		nonce2_incr ();
