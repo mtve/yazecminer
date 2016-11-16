@@ -4,7 +4,7 @@ Reimplementation of xenoncat/Tromp algorithm, just to understand
 it better by myself.   Performs from 5% to 10% worse then Tromp's equi1.
 It's single-threaded on purpose, and it's not so memory optimized.
 The aim was the pure C miner with no dependencies, that works of either
-little-endian or big-endian platform.
+little-endian or big-endian platform (ultrasparc is so pathetic)
 
 Code used:
 - BLAKE2b reference implementation from RFC 7693
@@ -17,3 +17,7 @@ Code used:
 
 How to run it:
    ./yazecminer.exe -l eu1-zcash.flypool.org -u {workername} -d 3
+
+Pools tested:
+- http://zcash.flypool.org
+- http://zcash.nicehash.com

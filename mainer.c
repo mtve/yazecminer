@@ -24,6 +24,7 @@
 #define BUF_SIZE		4096
 #define JSON_TOKENS_MAX		64
 #define TIME_STAT_PERIOD	15
+#define INTERRUPT		0
 
 static char			pool_host[BUF_SIZE] = "127.0.0.1";
 static int			pool_port = 3333;
@@ -134,41 +135,42 @@ hex (char *dst, unsigned char *src, int len) {
 
 static void
 json_debug (void) {
-	int			i;
+	int		pos;
 
-	for (i = 0; i < json_tokens; i++)
-		printf ("token %d: %s, start %d '%c' end %d '%c' size %d\n", i,
-		    json_token[i].type == JSMN_PRIMITIVE? "primitive" :
-		    json_token[i].type == JSMN_OBJECT	? "object" :
-		    json_token[i].type == JSMN_ARRAY	? "array" :
-		    json_token[i].type == JSMN_STRING	? "string" : "?",
-		    json_token[i].start, JSON_FIRST_CHAR (i),
-		    json_token[i].end, in_buf[ json_token[i].end ],
-		    json_token[i].size);
+	for (pos = 0; pos < json_tokens; pos++)
+		printf ("token %d: %s, start %d '%c' end %d '%c' size %d\n",
+		    pos,
+		    json_token[pos].type == JSMN_PRIMITIVE? "primitive" :
+		    json_token[pos].type == JSMN_OBJECT	? "object" :
+		    json_token[pos].type == JSMN_ARRAY	? "array" :
+		    json_token[pos].type == JSMN_STRING	? "string" : "?",
+		    json_token[pos].start, JSON_FIRST_CHAR (pos),
+		    json_token[pos].end, in_buf[ json_token[pos].end ],
+		    json_token[pos].size);
 }
 
 static char *
-json_string (int t) {
-	if (json_token[t].type != JSMN_STRING)
+json_string (int pos) {
+	if (json_token[pos].type != JSMN_STRING)
 		die ("not a string");
-	in_buf[ json_token[t].end ] = 0;
-	return &JSON_FIRST_CHAR(t);
+	in_buf[ json_token[pos].end ] = 0;
+	return &JSON_FIRST_CHAR(pos);
 }
 
 static int
-json_is_string (int t, char *str) {
-	return !strcmp (json_string (t), str);
+json_is_string (int pos, char *str) {
+	return !strcmp (json_string (pos), str);
 }
 
 static int
-json_num (int t) {
-	if (json_token[t].type != JSMN_PRIMITIVE)
+json_num (int pos) {
+	if (json_token[pos].type != JSMN_PRIMITIVE)
 		die ("not a number");
-	return atoi (&JSON_FIRST_CHAR (t));
+	return atoi (&JSON_FIRST_CHAR (pos));
 }
 
 static int
-json_next (int pos) {
+json_next_pos (int pos) {
 	int		i, n = pos + 1;
 
 	switch (json_token[pos].type) {
@@ -178,12 +180,12 @@ json_next (int pos) {
 	case JSMN_OBJECT:
 		for (i = 0; i < json_token[pos].size; i++) {
 			(void)json_string (n++);
-			n = json_next (n);
+			n = json_next_pos (n);
 		}
 		break;
 	case JSMN_ARRAY:
 		for (i = 0; i < json_token[pos].size; i++)
-			n = json_next (n);
+			n = json_next_pos (n);
 		break;
 	default:
 		die ("wtf");
@@ -192,53 +194,45 @@ json_next (int pos) {
 }
 
 static int
-json_object_key_or_null (int obj, char *key) {
+json_key_pos (int pos_obj, char *key, int required) {
 	int			i, pos;
 
-	if (json_token[obj].type != JSMN_OBJECT)
+	if (json_token[pos_obj].type != JSMN_OBJECT)
 		die ("token is not an object");
 
-	pos = obj + 1;
-	for (i = 0; i < json_token[obj].size; i++) {
+	pos = pos_obj + 1;
+	for (i = 0; i < json_token[pos_obj].size; i++) {
 		if (json_is_string (pos++, key))
 			return pos;
-		pos = json_next (pos);
+		pos = json_next_pos (pos);
 	}
+	if (required)
+		die ("no needed key");
 	return 0;
 }
 
-static int
-json_object_key (int obj, char *key) {
-	int			i;
-
-	i = json_object_key_or_null (obj, key);
-	if (!i)
-		die ("no needed key");
-	return i;
-}
-
 static void
-recv_target (int params) {
-	if (json_token[params].size != 1)
+recv_target (int pos_params) {
+	if (json_token[pos_params].size != 1)
 		die ("mining.target params size is not 1");
 
-	unhex (target, SHA256_DIGEST_SIZE, json_string (params + 1));
-	Log ("got target %s", &JSON_FIRST_CHAR (params + 1));
+	unhex (target, SHA256_DIGEST_SIZE, json_string (pos_params + 1));
+	Log ("got target %s", &JSON_FIRST_CHAR (pos_params + 1));
 
 	send_extranonce ();
 }
 
 static void
-recv_job (int params) {
-	if (json_token[params].size != 8)
+recv_job (int pos_params) {
+	if (json_token[pos_params].size != 8)
 		die ("mining.notify params size is not 8");
 
-	if (!json_is_string (params + 2, VERSION))
+	if (!json_is_string (pos_params + 2, VERSION))
 		die ("mining.notify bad version");
 
-	strncpy (job_id, json_string (params + 1), BUF_SIZE);
+	strncpy (job_id, json_string (pos_params + 1), BUF_SIZE);
 
-#define U(x,o) unhex (block.x, sizeof (block.x), json_string (params + o))
+#define U(x,o) unhex (block.x, sizeof (block.x), json_string (pos_params + o))
 	U (version,	2);
 	U (prevhash,	3);
 	U (merkleroot,	4);
@@ -247,7 +241,7 @@ recv_job (int params) {
 	U (bits,	7);
 #undef U
 
-	if (json_token[params + 8].type != JSMN_PRIMITIVE)
+	if (json_token[pos_params + 8].type != JSMN_PRIMITIVE)
 	    die ("mining.notify bad clean_jobs");
 
 	Log ("new job %s", job_id);
@@ -256,14 +250,14 @@ recv_job (int params) {
 }
 
 static void
-recv_subscribed (int result) {
+recv_subscribed (int pos_result) {
 	char		*nonce1;
 
-	if (json_token[result].type != JSMN_ARRAY ||
-	    json_token[result].size != 2)
+	if (json_token[pos_result].type != JSMN_ARRAY ||
+	    json_token[pos_result].size != 2)
 		die ("bad subscribe response");
 
-	nonce1 = json_string (result + 2);
+	nonce1 = json_string (pos_result + 2);
 	nonce1_len = strlen (nonce1) / 2;
 	if (nonce1_len >= (int)sizeof (block.nonce))
 		die ("nonce1 is too big");
@@ -275,9 +269,9 @@ recv_subscribed (int result) {
 }
 
 static void
-recv_authorized (int result) {
-	if (json_token[result].type != JSMN_PRIMITIVE ||
-	    JSON_FIRST_CHAR (result) != 't')
+recv_authorized (int pos_result) {
+	if (json_token[pos_result].type != JSMN_PRIMITIVE ||
+	    JSON_FIRST_CHAR (pos_result) != 't')
 		die ("not authorized");
 
 	Log ("authorized");
@@ -285,19 +279,19 @@ recv_authorized (int result) {
 
 static void
 json_do_notification (void) {
-	int		method, params;
+	int		pos_method, pos_params;
 
-	method = json_object_key (0, "method");
-	params = json_object_key (0, "params");
+	pos_method = json_key_pos (0, "method", 1);
+	pos_params = json_key_pos (0, "params", 1);
 
-	if (json_token[params].type != JSMN_ARRAY)
+	if (json_token[pos_params].type != JSMN_ARRAY)
 		die ("notify param is not array");
 
-	if (json_is_string (method, "mining.target") ||
-	    json_is_string (method, "mining.set_target")) {
-		recv_target (params);
-	} else if (json_is_string (method, "mining.notify")) {
-		recv_job (params);
+	if (json_is_string (pos_method, "mining.target") ||
+	    json_is_string (pos_method, "mining.set_target")) {
+		recv_target (pos_params);
+	} else if (json_is_string (pos_method, "mining.notify")) {
+		recv_job (pos_params);
 	} else {
 		die ("bad notify method");
 	}
@@ -305,30 +299,31 @@ json_do_notification (void) {
 
 static void
 json_do_response (int id) {
-	int		result, error;
+	int		pos_result, pos_error;
 
-	result = json_object_key (0, "result");
+	pos_result = json_key_pos (0, "result", 1);
+	pos_error = json_key_pos (0, "error", 0);
+
+	if (pos_error) {
+		if (json_token[pos_error].type == JSMN_ARRAY &&
+		    json_token[pos_error].size > 1 &&
+		    json_num (pos_error + 1) == 21) {
+			Log ("error 21 stale job not accepted");
+			return;
+		}
+		if (json_token[pos_error].type != JSMN_PRIMITIVE)
+			die ("not accepted");
+		if (JSON_FIRST_CHAR (pos_error) != 'n')
+			die ("error is primitive not null");
+	}
 
 	if (id == JSONRPC_ID_SUBSCRIBE) {
-		recv_subscribed (result);
+		recv_subscribed (pos_result);
 	} else if (id == JSONRPC_ID_AUTHORIZE) {
-		recv_authorized (result);
+		recv_authorized (pos_result);
 	} else if (id == JSONRPC_ID_EXTRANONCE) {
-		Log ("extranonce response unexpected");
+		Log ("extranonce response");
 	} else {
-		error = json_object_key_or_null (0, "error");
-		if (error) {
-			if (json_token[error].type == JSMN_ARRAY &&
-			    json_token[error].size > 0 &&
-			    json_num (error + 1) == 21) {
-				Log ("error 21 stale job not accepted");
-				return;
-			}
-			if (json_token[error].type != JSMN_PRIMITIVE)
-				die ("not accepted");
-			if (JSON_FIRST_CHAR (error) != 'n')
-				die ("error is primitive not null");
-		}
 		Log ("submit %d accepted", id);
 		stat_accepted++;
 	}
@@ -336,10 +331,8 @@ json_do_response (int id) {
 
 static void
 json_do (void) {
-	int		id;
+	int		pos_id;
 
-	if (flag_debug > 2)
-		json_debug ();
 	/*
 	 * we expect only notifications
 	 *   { id:null, method:"", params:[] }
@@ -347,19 +340,22 @@ json_do (void) {
 	 *   { id:1, result:[], error:null }
 	 */
 
-	id = json_object_key (0, "id");
-	if (json_token[id].type != JSMN_PRIMITIVE)
+	if (flag_debug > 2)
+		json_debug ();
+
+	pos_id = json_key_pos (0, "id", 1);
+	if (json_token[pos_id].type != JSMN_PRIMITIVE)
 		die ("id is not primitive");
 
-	if (JSON_FIRST_CHAR (id) == 'n' ||
-	    JSON_FIRST_CHAR (id) == '0')
+	if (JSON_FIRST_CHAR (pos_id) == 'n' ||
+	    JSON_FIRST_CHAR (pos_id) == '0')
 		json_do_notification ();
 	else if (
-	    JSON_FIRST_CHAR (id) >= '1' &&
-	    JSON_FIRST_CHAR (id) <= '9')
-		json_do_response (json_num (id));
+	    JSON_FIRST_CHAR (pos_id) >= '1' &&
+	    JSON_FIRST_CHAR (pos_id) <= '9')
+		json_do_response (json_num (pos_id));
 	else
-		die ("'id' value is boolean?");
+		die ("id value is boolean?");
 }
 
 static void
@@ -532,8 +528,8 @@ solution (void) {
 
 static void
 periodic (int timeout) {
-	struct pollfd		pfd;
-	int			i;
+	struct pollfd	pfd;
+	int		i;
 
 	pfd.fd = sock_fh;
 	pfd.events = POLLIN;
@@ -569,13 +565,12 @@ periodic (int timeout) {
 		if (out_pos == out_len)
 			out_pos = out_len = 0;
 	}
-	if (pfd.revents & (POLLERR | POLLHUP)) {
+	if (pfd.revents & (POLLERR | POLLHUP))
 		die ("pollerr or pollhup");
-	}
 }
 
 static void
-bench (int r) {
+benchmark (int r) {
 	int		i, j;
 
 	for (j = 0; j < r; j++) {
@@ -652,7 +647,7 @@ arg_parse (int argc, char **argv) {
 
 void
 stat_print (void) {
-	time_t			time_cur, t1, t2;
+	time_t		time_cur, t1, t2;
 
 	time (&time_cur);
 	if (time_cur - time_last < TIME_STAT_PERIOD)
@@ -697,7 +692,7 @@ nonce2_reset (void) {
 
 static void
 nonce2_incr (void) {
-	int			i;
+	int		i;
 
 	for (i = nonce1_len; i < (int)sizeof (block.nonce); i++)
 		if (++block.nonce[i])
@@ -708,14 +703,14 @@ nonce2_incr (void) {
 
 void
 mine (void) {
-	int			i;
+	int		i;
 
 	time (&time_start);
 	time_prev = time_last = time_start;
 	for (;;) {
 		periodic (0);
 		if (flag_new_job) {
-#if 0
+#ifdef INTERRUPT
 NEW_JOB:
 #endif
 			flag_new_job = 0;
@@ -726,7 +721,7 @@ NEW_JOB:
 		stat_print ();
 		step0 (&block);
 		for (i = 1; i <= WK; i++) {
-#if 0
+#ifdef INTERRUPT
 			periodic (0);
 			if (flag_new_job) {
 				stat_interrupts++;
@@ -751,7 +746,7 @@ main (int argc, char **argv) {
 	arg_parse (argc, argv);
 
 	if (flag_bench) {
-		bench (flag_bench);
+		benchmark (flag_bench);
 		return 0;
 	}
 
