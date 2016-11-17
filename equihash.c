@@ -6,7 +6,7 @@
 #include "blake2b.h"
 #include "equihash.h"
 
-#define DEBUG			1
+#define DEBUG			0
 
 typedef unsigned int		word_t;
 
