@@ -6,7 +6,7 @@
 #include "blake2b.h"
 #include "equihash.h"
 
-#define DEBUG			0
+#define DEBUG			1
 
 typedef unsigned int		word_t;
 
@@ -46,7 +46,7 @@ typedef unsigned int		word_t;
 #define L2_FIRST_BIT(step)	BIT_IDX (STRING_ALIGN_BITS + (step    ) * STEP_BITS - L2_BITS)
 #define L212_LAST_BIT(step)	BIT_IDX (STRING_ALIGN_BITS + (step + 1) * STEP_BITS - 1)
 
-#define TREE_SIZE		(STRINGS * WK)
+#define TREE_SIZE		(STRINGS * (WK + 1))
 
 #define HASH_STRINGS		(BLAKE2B_OUTBYTES / STRING_BYTES)
 #define HASH_BYTES		(HASH_STRINGS * STRING_BYTES)
