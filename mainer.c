@@ -710,7 +710,7 @@ mine (void) {
 	for (;;) {
 		periodic (0);
 		if (flag_new_job) {
-#ifdef INTERRUPT
+#if INTERRUPT
 NEW_JOB:
 #endif
 			flag_new_job = 0;
@@ -721,7 +721,7 @@ NEW_JOB:
 		stat_print ();
 		step0 (&block);
 		for (i = 1; i <= WK; i++) {
-#ifdef INTERRUPT
+#if INTERRUPT
 			periodic (0);
 			if (flag_new_job) {
 				stat_interrupts++;
