@@ -78,7 +78,7 @@ static word_t		tree[TREE_SIZE][2];
 static int		ntree;
 
 #if DEBUG
-static word_t		orig[STRINGS][STRING_BYTES];
+static word_t		orig[STRINGS][STRING_WORDS];
 #endif
 
 static void
