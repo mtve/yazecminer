@@ -742,6 +742,7 @@ main (int argc, char **argv) {
 
 	Log ("Yet Another ZEC Miner, CPU miner for https://z.cash/");
 	Log ("BLAKE2b implementation: %s", blake2b_info ());
+	Log ("equihash info: %s", equihash_info ());
 
 	arg_parse (argc, argv);
 

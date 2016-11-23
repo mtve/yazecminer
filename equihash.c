@@ -6,9 +6,9 @@
 #include "blake2b.h"
 #include "equihash.h"
 
-#define DEBUG			0
+#define DEBUG			1
 
-typedef unsigned int		word_t;
+typedef uint32_t		word_t;		/* could be uint64_t */
 
 #define STRING_IDX_BITS		(WN / (WK + 1) + 1)
 #define STRINGS			(1 << STRING_IDX_BITS)
@@ -31,22 +31,30 @@ typedef unsigned int		word_t;
 #define L3_STRINGS		16
 #define L1_BOXES		(1 << L1_BITS)
 #define L2_BOXES		(1 << L2_BITS)
-#define L2_STRINGS		(STRINGS / L1_BOXES * 5 / 2)
+#define L2_STRINGS		(STRINGS / L1_BOXES * 3 / 2)
 #define L1_MASK			(L1_BOXES - 1)
 #define L2_MASK			(L2_BOXES - 1)
 #define L12_MASK		((1 << STEP_BITS) - 1)
 #define L212_MASK		((1 << (STEP_BITS + L2_BITS)) - 1)
 
-#define MEM_BITS(step)		(STRING_BITS - (step) * STEP_BITS + L2_BITS + WORD_BITS)
+#define L2Z_BITS		(L2_BITS + 1)
+#define L2Z_MASK		((1 << L2Z_BITS) - 1)
+#define TREE_BITS		(L1_BITS + L2Z_BITS * 2)
+#define TREE_WORDS		DIV_UP (TREE_BITS, WORD_BITS)
+#define TREE(i1,i2a,i2b)	(((i1) << (L2Z_BITS * 2)) | ((i2a) << L2Z_BITS) | (i2b))
+#define TREE_L1(tree)		((tree) >> (L2Z_BITS * 2))
+#define TREE_L2A(tree)		(((tree) >> L2Z_BITS) & L2Z_MASK)
+#define TREE_L2B(tree)		((tree) & L2Z_MASK)
+
+#define MEM_BITS(step)		(STRING_BITS - (step) * STEP_BITS + L2_BITS + TREE_WORDS * WORD_BITS)
 #define MEM_WORDS(step)		(DIV_UP (MEM_BITS (step), WORD_BITS))
-#define MEM_DECR0		(STRING_WORDS + 1 - MEM_WORDS (1))
-#define L2_WORDS		(MEM_WORDS (1) * L2_STRINGS)
+#define MEM_WORDS1		MEM_WORDS (1)
+#define MEM_DECR0		(STRING_WORDS + TREE_WORDS - MEM_WORDS1)
+#define TREE_POS(step)		(MEM_WORDS1 - 1 - ((step) >> 1))
 
 #define BIT_IDX(x)		(WORD_BITS - 1 - (x) % WORD_BITS)
 #define L2_FIRST_BIT(step)	BIT_IDX (STRING_ALIGN_BITS + (step    ) * STEP_BITS - L2_BITS)
 #define L212_LAST_BIT(step)	BIT_IDX (STRING_ALIGN_BITS + (step + 1) * STEP_BITS - 1)
-
-#define TREE_SIZE		(STRINGS * (WK + 1))
 
 #define HASH_STRINGS		(BLAKE2B_OUTBYTES / STRING_BYTES)
 #define HASH_BYTES		(HASH_STRINGS * STRING_BYTES)
@@ -68,14 +76,14 @@ typedef unsigned int		word_t;
 #endif
 
 typedef struct {
-	int		l2cnt[L1_BOXES];
-	word_t		l2mem[L1_BOXES][L2_WORDS];
+	int		cnt[L1_BOXES];
+	word_t		mem[L1_BOXES][L2_STRINGS][MEM_WORDS1];
 } l1_t;
 
 static block_t		*pblock;
-static l1_t		l1a, l1b;
-static word_t		tree[TREE_SIZE][2];
-static int		ntree;
+static l1_t		l1x, l1y;
+
+#define L1(step)		((step) & 1 ? &l1y : &l1x)
 
 #if DEBUG
 static word_t		orig[STRINGS][STRING_WORDS];
@@ -97,18 +105,18 @@ store32 (uint8_t *c, int b) {
 
 static void
 l1_init (l1_t *l1) {
-	memset (l1->l2cnt, 0, sizeof (l1->l2cnt));
+	memset (l1->cnt, 0, sizeof (l1->cnt));
 }
 
 static word_t *
-l1_addr (int step, l1_t *l1, word_t i1) {
+l1_addr (l1_t *l1, word_t i1) {
 	int		i2;
 
 	ASSERT (i1 < L1_BOXES);
-	i2 = l1->l2cnt[i1]++;
+	i2 = l1->cnt[i1]++;
 	if (DEBUG && i2 >= L2_STRINGS - 1)
 		die ("no mem");
-	return &l1->l2mem[i1][i2 * MEM_WORDS (step)];
+	return l1->mem[i1][i2];
 }
 
 static word_t
@@ -135,6 +143,7 @@ step0_add (int s, uint8_t *string) {
 
 	/* everything is LE but bits are BE... f*ck that, BE all */
 
+	/* TODO avoid tripple copy */
 	k = -STRING_ALIGN_BYTES;
 	for (i = 0; i < STRING_WORDS; i++) {
 		x = 0;
@@ -147,9 +156,10 @@ step0_add (int s, uint8_t *string) {
 #endif
 	ASSERT (STRING_ALIGN_BITS >= L2_BITS);
 
-	ptr = l1_addr (1, &l1a, (l212_val (0, w) >> L2_BITS) & L1_MASK);
-	memcpy (ptr, w + MEM_DECR0, (MEM_WORDS (1) - 1) * WORD_BYTES);
-	ptr[MEM_WORDS (1) - 1] = -s - 1;
+	ptr = l1_addr (L1 (0), (l212_val (0, w) >> L2_BITS) & L1_MASK);
+	for (i = 0; i < MEM_WORDS1 - 1; i++)
+		ptr[i] = w[i + MEM_DECR0];
+	ptr[TREE_POS (0)] = s;
 }
 
 void
@@ -164,6 +174,7 @@ step0 (block_t *p) {
 	ASSERT (STRING_ALIGN_BITS % BYTE_BITS == 0);
 	ASSERT ((STRING_ALIGN_BYTES + STRING_BYTES) % WORD_BYTES == 0);
 	ASSERT (L2_BITS + STEP_BITS <= WORD_BITS);
+	ASSERT (TREE_WORDS == 1);
 
 	pblock = p;
 	ASSERT (DIV_UP (SOLUTION_NUMS * STRING_IDX_BITS, BYTE_BITS) ==
@@ -181,8 +192,7 @@ step0 (block_t *p) {
 	blake2b_update (&state0, (uint8_t *)pblock,
 	    pblock->solsize - pblock->version);
 
-	ntree = 0;
-	l1_init (&l1a);
+	l1_init (L1 (0));
 	ASSERT (STRING_BYTES == HASH_BYTES / HASH_STRINGS);
 	for (h = 0; h < HASHES; h++) {
 		store32 (c, h);
@@ -201,37 +211,42 @@ step0 (block_t *p) {
 }
 
 static int
-tree_restore (int step, word_t *sol, int idx) {
+tree_restore (int step, word_t *sol, word_t tree) {
 	int		i, j,
-			k = 1 << (step - 1);
+			k = 1 << (step - 1),
+			i1 = TREE_L1 (tree),
+			i2a = TREE_L2A (tree),
+			i2b = TREE_L2B (tree);
 
 	if (step == 0) {
-		ASSERT (idx < 0);
-		*sol = -idx - 1;
-	} else {
-		ASSERT (idx >= 0);
-		ASSERT (idx <= ntree);
-		if (!tree_restore (step - 1, sol, tree[idx][0]))
+		*sol = tree;
+		return 1;
+	}
+
+#define T(i2)	L1 (step - 1)->mem[i1][i2][TREE_POS (step - 1)]
+	if (!tree_restore (step - 1, sol    , T (i2a)))
+		return 0;
+	if (!tree_restore (step - 1, sol + k, T (i2b)))
+		return 0;
+#undef T
+
+	for (i = 0; i < k; i++)
+	for (j = 0; j < k; j++)
+		if (sol[i] == sol[j + k])
 			return 0;
-		if (!tree_restore (step - 1, sol + k, tree[idx][1]))
-			return 0;
-		for (i = 0; i < k; i++)
-		for (j = 0; j < k; j++)
-			if (sol[i] == sol[j + k])
-				return 0;
-		if (sol[0] > sol[k]) {
-			for (i = 0; i < k; i++) {
-				j = sol[i];
-				sol[i] = sol[i + k];
-				sol[i + k] = j;
-			}
+
+	if (sol[0] > sol[k]) {
+		for (i = 0; i < k; i++) {
+			j = sol[i];
+			sol[i] = sol[i + k];
+			sol[i + k] = j;
 		}
 	}
 	return 1;
 }
 
 static int
-check_sol () {
+check_sol (word_t tree) {
 	word_t		sol[SOLUTION_NUMS];
 	int		i;
 #if DEBUG
@@ -239,7 +254,7 @@ check_sol () {
 	word_t		xor, nok;
 #endif
 
-	if (!tree_restore (WK, sol, ntree))
+	if (!tree_restore (WK, sol, tree))
 		return 0;
 
 #if DEBUG
@@ -282,32 +297,31 @@ genstep##step (void) { \
 	const int	WORDS = MEM_WORDS (step); \
 	const int	WORDS_NEXT = MEM_WORDS (step + 1); \
 	const int	DECR = WORDS - WORDS_NEXT; \
-	l1_t		*l1f = step & 1 ? &l1a : &l1b; \
-	l1_t		*l1t = step & 1 ? &l1b : &l1a; \
-	int		i1, ia, a2, i3, ib, i; \
+	l1_t		*l1f = L1 (step - 1); \
+	l1_t		*l1t = L1 (step); \
+	int		i1, i2a, a2, i3, ib, i2b, i; \
 	word_t		a212, c12; \
 	word_t		*pa, *pb, *pc; \
 	uint8_t		l3cnt[L2_BOXES]; \
-	word_t		*l3ptr[L2_BOXES][L3_STRINGS]; \
+	word_t		l3i2[L2_BOXES][L3_STRINGS]; \
 	\
 	l1_init (l1t); \
 	for (i1 = 0; i1 < L1_BOXES; i1++) { \
 		memset (l3cnt, 0, sizeof (l3cnt)); \
 		\
-		for (ia = l1f->l2cnt[i1] - 1; ia >= 0; ia--) { \
-			pa = &l1f->l2mem[i1][ia * WORDS]; \
+		for (i2a = l1f->cnt[i1] - 1; i2a >= 0; i2a--) { \
+			pa = l1f->mem[i1][i2a]; \
 			a212 = l212_val (step, pa); \
 			a2 = a212 >> STEP_BITS; \
 			i3 = l3cnt[a2]++; \
 			if (DEBUG) { \
 				if (i3 >= L3_STRINGS) \
 					die ("no l3"); \
-				if (ntree >= TREE_SIZE - L3_STRINGS) \
-					die ("no tree"); \
 			} \
-			l3ptr[a2][i3] = pa; \
+			l3i2[a2][i3] = i2a; \
 			for (ib = i3 - 1; ib >= 0; ib--) { \
-				pb = l3ptr[a2][ib]; \
+				i2b = l3i2[a2][ib]; \
+				pb = l1f->mem[i1][i2b]; \
 				\
 				if (step < WK && \
 				    pa[WORDS - 2] == pb[WORDS - 2]) { \
@@ -315,25 +329,22 @@ genstep##step (void) { \
 				} \
 				c12 = (a212 ^ l212_val (step, pb)) & \
 				    L12_MASK; \
-				if (step == WK && c12) \
-					continue; \
-				\
-				tree[ntree][0] = pa[WORDS - 1]; \
-				tree[ntree][1] = pb[WORDS - 1]; \
 				if (step == WK) { \
-					if (check_sol ()) \
+					if (!c12 && \
+					    check_sol (TREE (i1, i2a, i2b))) \
 						return; \
 					continue; \
 				} \
-				pc = l1_addr (step + 1, l1t, c12 >> L2_BITS); \
+				pc = l1_addr (l1t, c12 >> L2_BITS); \
 				for (i = 0; i < WORDS_NEXT - 1; i++) \
 					pc[i] = pa[i + DECR] ^ pb[i + DECR]; \
-				pc[WORDS_NEXT - 1] = ntree++; \
+				ASSERT (i <= TREE_POS (step)); \
+				pc[TREE_POS (step)] = TREE (i1, i2a, i2b); \
 			} \
 		} \
 	} \
 	if (DEBUG) { \
-		printf ("step %d tree %d/%d\n", step, ntree, TREE_SIZE); \
+		printf ("step %d\n", step); \
 		fflush (stdout); \
 	} \
 }
@@ -362,4 +373,13 @@ step (int step) {
 	case 9: genstep9 (); break;
 	default: die ("wtf");
 	}
+}
+
+char *
+equihash_info (void) {
+	static char	buf[1024];
+
+	snprintf (buf, sizeof (buf), "word %d bytes, mem %d bytes",
+	    sizeof (word_t), sizeof (l1x) * 2);
+	return buf;
 }

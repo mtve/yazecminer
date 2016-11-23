@@ -18,6 +18,7 @@ typedef struct {
 
 typedef char equihash_dummy_t[1 / (sizeof (block_t) == 1487)];
 
+char		*equihash_info (void);
 void		step0 (block_t *block);
 void		step (int step);	/* 1..WK */
 int		solution (void);	/* implemented by caller */
