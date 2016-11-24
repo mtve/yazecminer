@@ -8,7 +8,7 @@
 
 #define DEBUG			0
 
-typedef uint32_t		word_t;		/* could be uint64_t */
+typedef uint32_t		word_t;
 
 #define STRING_IDX_BITS		(WN / (WK + 1) + 1)
 #define STRINGS			(1 << STRING_IDX_BITS)
@@ -350,8 +350,8 @@ genstep##step (void) { \
 					pc[i] = pa[i + DECR] ^ pb[i + DECR]; \
 				ASSERT (i <= TREE_POS (step)); \
 				ASSERT (i1 < L1_BOXES); \
-				ASSERT (i2a < L2Z_MASK); \
-				ASSERT (i2b < L2Z_MASK); \
+				ASSERT (i2a <= L2Z_MASK); \
+				ASSERT (i2b <= L2Z_MASK); \
 				pc[TREE_POS (step)] = TREE (i1, i2a, i2b); \
 			} \
 		} \
