@@ -8,6 +8,8 @@
 
 #define DEBUG			0
 
+#define L3_MAGIC_MORPAV		12
+
 typedef uint32_t		word_t;
 
 #define STRING_IDX_BITS		(WN / (WK + 1) + 1)
@@ -60,7 +62,7 @@ typedef uint32_t		word_t;
 #define HASH_BYTES		(HASH_STRINGS * STRING_BYTES)
 #define HASHES			(STRINGS / HASH_STRINGS)
 
-#define L12L2Z(i12,i2)	((i12) << L2Z_BITS | (i2))
+#define L12L2Z(i12,i2)		((i12) << L2Z_BITS | (i2))
 #define L12L2Z_L2Z(pack)	((pack) & L2Z_MASK)
 #define L12L2Z_L12(pack)	((pack) >> L2Z_BITS)
 
@@ -304,7 +306,7 @@ genstep##step (void) { \
 	l1_t		*l1f = L1 (step - 1); \
 	l1_t		*l1t = L1 (step); \
 	int		i1, i2a, a2, i3, ib, i2b, i; \
-	word_t		a212, b2z, c12; \
+	word_t		a212, a2z, b2z, c12; \
 	word_t		*pa, *pb, *pc; \
 	uint8_t		l3cnt[L2_BOXES]; \
 	word_t		l3i2[L2_BOXES][L3_STRINGS]; \
@@ -328,6 +330,14 @@ genstep##step (void) { \
 					die ("no l3"); \
 			} \
 			l3i2[a2][i3] = L12L2Z (a212, i2a); \
+		} \
+		for (a2 = 0; a2 < L2_BOXES; a2++) \
+		if (l3cnt[a2] <= L3_MAGIC_MORPAV) \
+		for (i3 = l3cnt[a2] - 1; i3 >= 0; i3--) { \
+			a2z = l3i2[a2][i3]; \
+			a212 = L12L2Z_L12 (a2z); \
+			i2a = L12L2Z_L2Z (a2z); \
+			pa = l1f->mem[i1][i2a]; \
 			for (ib = i3 - 1; ib >= 0; ib--) { \
 				b2z = l3i2[a2][ib]; \
 				i2b = L12L2Z_L2Z (b2z); \
