@@ -55,6 +55,7 @@ typedef char blake2b_dummy_t[1 / (sizeof (blake2b_param) == BLAKE2B_OUTBYTES)];
 int	blake2b_init_param (blake2b_state *S, const blake2b_param *P);
 int	blake2b_update (blake2b_state *S, const uint8_t *in, uint16_t inlen);
 int	blake2b_final (blake2b_state *S, uint8_t *out, uint8_t outlen);
+void 	blake2b_zcash (blake2b_state *S, uint32_t w3, uint8_t *out);
 char	*blake2b_info (void);
 
 #endif

@@ -6,7 +6,7 @@
 #include "blake2b.h"
 #include "equihash.h"
 
-#define DEBUG			1
+#define DEBUG			0
 
 typedef uint32_t		word_t;		/* could be uint64_t */
 
@@ -37,7 +37,7 @@ typedef uint32_t		word_t;		/* could be uint64_t */
 #define L12_MASK		((1 << STEP_BITS) - 1)
 #define L212_MASK		((1 << (STEP_BITS + L2_BITS)) - 1)
 
-#define L2Z_BITS		(L2_BITS + 1)
+#define L2Z_BITS		(L2_BITS + 2)
 #define L2Z_MASK		((1 << L2Z_BITS) - 1)
 #define TREE_BITS		(L1_BITS + L2Z_BITS * 2)
 #define TREE_WORDS		DIV_UP (TREE_BITS, WORD_BITS)
@@ -59,6 +59,10 @@ typedef uint32_t		word_t;		/* could be uint64_t */
 #define HASH_STRINGS		(BLAKE2B_OUTBYTES / STRING_BYTES)
 #define HASH_BYTES		(HASH_STRINGS * STRING_BYTES)
 #define HASHES			(STRINGS / HASH_STRINGS)
+
+#define L12L2Z(i12,i2)	((i12) << L2Z_BITS | (i2))
+#define L12L2Z_L2Z(pack)	((pack) & L2Z_MASK)
+#define L12L2Z_L12(pack)	((pack) >> L2Z_BITS)
 
 #if DEBUG
 #define IF_DEBUG(x)		(x)
@@ -300,16 +304,21 @@ genstep##step (void) { \
 	l1_t		*l1f = L1 (step - 1); \
 	l1_t		*l1t = L1 (step); \
 	int		i1, i2a, a2, i3, ib, i2b, i; \
-	word_t		a212, c12; \
+	word_t		a212, b2z, c12; \
 	word_t		*pa, *pb, *pc; \
 	uint8_t		l3cnt[L2_BOXES]; \
 	word_t		l3i2[L2_BOXES][L3_STRINGS]; \
 	\
 	l1_init (l1t); \
+	if (DEBUG) { \
+		printf ("step %d\n", step); \
+		fflush (stdout); \
+	} \
 	for (i1 = 0; i1 < L1_BOXES; i1++) { \
 		memset (l3cnt, 0, sizeof (l3cnt)); \
 		\
 		for (i2a = l1f->cnt[i1] - 1; i2a >= 0; i2a--) { \
+			ASSERT (i2a < L2Z_MASK); \
 			pa = l1f->mem[i1][i2a]; \
 			a212 = l212_val (step, pa); \
 			a2 = a212 >> STEP_BITS; \
@@ -318,17 +327,18 @@ genstep##step (void) { \
 				if (i3 >= L3_STRINGS) \
 					die ("no l3"); \
 			} \
-			l3i2[a2][i3] = i2a; \
+			l3i2[a2][i3] = L12L2Z (a212, i2a); \
 			for (ib = i3 - 1; ib >= 0; ib--) { \
-				i2b = l3i2[a2][ib]; \
+				b2z = l3i2[a2][ib]; \
+				i2b = L12L2Z_L2Z (b2z); \
 				pb = l1f->mem[i1][i2b]; \
 				\
 				if (step < WK && \
 				    pa[WORDS - 2] == pb[WORDS - 2]) { \
 					continue; \
 				} \
-				c12 = (a212 ^ l212_val (step, pb)) & \
-				    L12_MASK; \
+				c12 = (a212 ^ L12L2Z_L12 (b2z)) \
+				    & L12_MASK; \
 				if (step == WK) { \
 					if (!c12 && \
 					    check_sol (TREE (i1, i2a, i2b))) \
@@ -339,13 +349,12 @@ genstep##step (void) { \
 				for (i = 0; i < WORDS_NEXT - 1; i++) \
 					pc[i] = pa[i + DECR] ^ pb[i + DECR]; \
 				ASSERT (i <= TREE_POS (step)); \
+				ASSERT (i1 < L1_BOXES); \
+				ASSERT (i2a < L2Z_MASK); \
+				ASSERT (i2b < L2Z_MASK); \
 				pc[TREE_POS (step)] = TREE (i1, i2a, i2b); \
 			} \
 		} \
-	} \
-	if (DEBUG) { \
-		printf ("step %d\n", step); \
-		fflush (stdout); \
 	} \
 }
 

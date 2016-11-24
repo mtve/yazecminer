@@ -136,6 +136,47 @@ blake2b_compress (blake2b_state *S, const uint8_t block[BLAKE2B_BLOCKBYTES]) {
 		S->h[i] = S->h[i] ^ v[i] ^ v[i + 8];
 }
 
+void 
+blake2b_zcash (blake2b_state *S, uint32_t w3, uint8_t *out) {
+	uint64_t	m[16];
+	uint64_t	v[16];
+	int		i;
+
+	m[0] = 0;
+	m[1] = (uint64_t)w3 << 32;
+	for (i = 2; i < 16; i++)
+		m[i] = 0;
+
+	for (i = 0; i < 8; i++)
+		v[i] = S->h[i];
+
+	v[8] = blake2b_IV[0];
+	v[9] = blake2b_IV[1];
+	v[10] = blake2b_IV[2];
+	v[11] = blake2b_IV[3];
+	v[12] = blake2b_IV[4] ^ 144;
+	v[13] = blake2b_IV[5];
+	v[14] = blake2b_IV[6] ^ -1LL;
+	v[15] = blake2b_IV[7];
+
+	ROUND (0);
+	ROUND (1);
+	ROUND (2);
+	ROUND (3);
+	ROUND (4);
+	ROUND (5);
+	ROUND (6);
+	ROUND (7);
+	ROUND (8);
+	ROUND (9);
+	ROUND (10);
+	ROUND (11);
+
+	for (i = 0; i < 6; i++)
+		((uint64_t *)out)[i] = S->h[i] ^ v[i] ^ v[i + 8];
+	*(uint16_t *)(out + 48) = (uint16_t)S->h[6] ^ v[6] ^ v[14];
+}
+
 #undef G
 #undef ROUND
 

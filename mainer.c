@@ -20,11 +20,12 @@
 #include "blake2b.h"
 #include "equihash.h"
 
+#define INTERRUPT		1
+
 #define VERSION			"04000000"
 #define BUF_SIZE		4096
 #define JSON_TOKENS_MAX		64
 #define TIME_STAT_PERIOD	15
-#define INTERRUPT		0
 
 static char			pool_host[BUF_SIZE] = "127.0.0.1";
 static int			pool_port = 3333;
@@ -523,7 +524,11 @@ solution (void) {
 	stat_submitted++;
 
 	Log ("solution to %s submitted", job_id);
-	return 1;
+#if INTERRUPT
+	if (flag_new_job)
+		return 1;
+#endif
+	return 0;
 }
 
 static void
