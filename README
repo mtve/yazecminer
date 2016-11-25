@@ -1,8 +1,8 @@
 Yet Another ZEC Miner, CPU miner for https://z.cash/
 
 Reimplementation of xenoncat/Tromp algorithm, just to understand
-it better by myself.   Performs around 5% worse then Tromp's equi1.
-It's single-threaded on purpose, and uses 170 MB of memory now.
+it better by myself.   Performs around the same as Tromp's equi1.
+It's single-threaded on purpose, and uses 200 MB of memory now.
 The aim was the pure C miner with no dependencies, that works of either
 little-endian or big-endian platform (ultrasparc speed is so pathetic).
 
