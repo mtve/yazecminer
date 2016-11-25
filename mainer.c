@@ -21,6 +21,7 @@
 #include "equihash.h"
 
 #define INTERRUPT		1
+#define STAT_ALPHA		0.1
 
 #define VERSION			"04000000"
 #define BUF_SIZE		4096
@@ -63,6 +64,7 @@ static int			stat_submitted = 0;
 static int			stat_accepted = 0;
 static int			stat_found_last = 0;
 static int			stat_found_cur = 0;
+static float			speed_avg = -1;
 
 #define JSONRPC_ID_SUBSCRIBE	1
 #define JSONRPC_ID_AUTHORIZE	2
@@ -652,7 +654,8 @@ arg_parse (int argc, char **argv) {
 
 void
 stat_print (void) {
-	time_t		time_cur, t1, t2;
+	time_t		time_cur, t1;
+	float		speed_last;
 
 	time (&time_cur);
 	if (time_cur - time_last < TIME_STAT_PERIOD)
@@ -661,13 +664,13 @@ stat_print (void) {
 	t1 = time_cur - time_prev;
 	if (!t1)
 		t1 = 1;
-	t2 = time_cur - time_start;
-	if (!t2)
-		t2 = 1;
-	Log ("stat: cur %.2f Sol/s all %.2f Sol/s, total %d send %d "
+	speed_last = (float)(stat_found_last + stat_found_cur) / t1;
+	if (speed_avg < 0)
+		speed_avg = speed_last;
+	speed_avg = speed_avg * (1 - STAT_ALPHA) + speed_last * STAT_ALPHA;
+	Log ("stat: cur %.2f Sol/s avg %.2f Sol/s, total %d send %d "
 	    "ok %d jobs %d interrupts %d",
-	    (float)(stat_found_last + stat_found_cur) / t1,
-	    (float)stat_found / t2,
+	    speed_last, speed_avg,
 	    stat_found, stat_submitted,
 	    stat_accepted, stat_jobs, stat_interrupts);
 	time_prev = time_last;
