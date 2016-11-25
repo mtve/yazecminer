@@ -8,8 +8,6 @@
 
 #define DEBUG			0
 
-#define L3_MAGIC_MORPAV		12
-
 typedef uint32_t		word_t;
 
 #define STRING_IDX_BITS		(WN / (WK + 1) + 1)
@@ -143,28 +141,27 @@ l212_val (int step, word_t *ptr) {
 }
 
 static void
-step0_add (int s, uint8_t *string) {
-	int			i, j, k, x;
-	word_t			w[STRING_WORDS], *ptr;
+step0_add (int s, uint8_t *str) {
+	int			i, j, k;
+	word_t			*ptr, x;
+
+#if DEBUG
+	orig[s][STRING_WORDS - 1] = 0;
+	memcpy (orig[s], str, STRING_BYTES);
+#endif
+	ASSERT (L1_BITS <= 16);
+	ptr = l1_addr (L1 (0), ((str[0] << 8) | str[1]) >> (16 - L1_BITS));
 
 	/* everything is LE but bits are BE... f*ck that, BE all */
-
-	/* TODO avoid tripple copy */
-	k = -STRING_ALIGN_BYTES;
-	for (i = 0; i < STRING_WORDS; i++) {
+	k = MEM_DECR0 * WORD_BYTES - STRING_ALIGN_BYTES;
+	for (i = 0; i < MEM_WORDS1 - 1; i++) {
 		x = 0;
 		for (j = WORD_BYTES - 1; j >= 0; j--, k++)
-			x |= (k < 0 ? 0 : string[k]) << (BYTE_BITS * j);
-		w[i] = x;
+			if (k >= 0)
+				x |= str[k] << (BYTE_BITS * j);
+		ptr[i] = x;
 	}
-#if DEBUG
-	memcpy (orig[s], w, STRING_WORDS * WORD_BYTES);
-#endif
-	ASSERT (STRING_ALIGN_BITS >= L2_BITS);
-
-	ptr = l1_addr (L1 (0), (l212_val (0, w) >> L2_BITS) & L1_MASK);
-	for (i = 0; i < MEM_WORDS1 - 1; i++)
-		ptr[i] = w[i + MEM_DECR0];
+	ASSERT (k == STRING_BYTES);
 	ptr[TREE_POS (0)] = s;
 }
 
@@ -181,6 +178,8 @@ step0 (block_t *p) {
 	ASSERT ((STRING_ALIGN_BYTES + STRING_BYTES) % WORD_BYTES == 0);
 	ASSERT (L2_BITS + STEP_BITS <= WORD_BITS);
 	ASSERT (TREE_WORDS == 1);
+	ASSERT (TREE_POS (0) == MEM_WORDS1 - 1);
+	ASSERT (TREE_POS (WK - 1) >= MEM_WORDS (WK - 1) - 1);
 
 	pblock = p;
 	ASSERT (DIV_UP (SOLUTION_NUMS * STRING_IDX_BITS, BYTE_BITS) ==
