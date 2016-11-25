@@ -33,7 +33,7 @@ typedef uint32_t		word_t;
 #define L3_STRINGS		16
 #define L1_BOXES		(1 << L1_BITS)
 #define L2_BOXES		(1 << L2_BITS)
-#define L2_STRINGS		(STRINGS / L1_BOXES * 3 / 2)
+#define L2_STRINGS		(STRINGS / L1_BOXES * 7 / 4)
 #define L1_MASK			(L1_BOXES - 1)
 #define L2_MASK			(L2_BOXES - 1)
 #define L12_MASK		((1 << STEP_BITS) - 1)
@@ -306,7 +306,7 @@ genstep##step (void) { \
 	l1_t		*l1f = L1 (step - 1); \
 	l1_t		*l1t = L1 (step); \
 	int		i1, i2a, a2, i3, ib, i2b, i; \
-	word_t		a212, a2z, b2z, c12; \
+	word_t		a212, b2z, c12; \
 	word_t		*pa, *pb, *pc; \
 	uint8_t		l3cnt[L2_BOXES]; \
 	word_t		l3i2[L2_BOXES][L3_STRINGS]; \
@@ -318,31 +318,19 @@ genstep##step (void) { \
 	} \
 	for (i1 = 0; i1 < L1_BOXES; i1++) { \
 		memset (l3cnt, 0, sizeof (l3cnt)); \
-		\
 		for (i2a = l1f->cnt[i1] - 1; i2a >= 0; i2a--) { \
-			ASSERT (i2a < L2Z_MASK); \
+			ASSERT (i2a <= L2Z_MASK); \
 			pa = l1f->mem[i1][i2a]; \
 			a212 = l212_val (step, pa); \
 			a2 = a212 >> STEP_BITS; \
 			i3 = l3cnt[a2]++; \
-			if (DEBUG) { \
-				if (i3 >= L3_STRINGS) \
-					die ("no l3"); \
-			} \
+			if (DEBUG && i3 >= L3_STRINGS) \
+				die ("no l3"); \
 			l3i2[a2][i3] = L12L2Z (a212, i2a); \
-		} \
-		for (a2 = 0; a2 < L2_BOXES; a2++) \
-		if (l3cnt[a2] <= L3_MAGIC_MORPAV) \
-		for (i3 = l3cnt[a2] - 1; i3 >= 0; i3--) { \
-			a2z = l3i2[a2][i3]; \
-			a212 = L12L2Z_L12 (a2z); \
-			i2a = L12L2Z_L2Z (a2z); \
-			pa = l1f->mem[i1][i2a]; \
 			for (ib = i3 - 1; ib >= 0; ib--) { \
 				b2z = l3i2[a2][ib]; \
 				i2b = L12L2Z_L2Z (b2z); \
 				pb = l1f->mem[i1][i2b]; \
-				\
 				if (step < WK && \
 				    pa[WORDS - 2] == pb[WORDS - 2]) { \
 					continue; \
