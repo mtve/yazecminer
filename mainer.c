@@ -36,6 +36,7 @@ static char			worker_name[BUF_SIZE] =
 static char			worker_pass[BUF_SIZE] = "x";
 static int			flag_bench = 0;
 static int			flag_debug = 0;
+static int			flag_extranonce = 1;
 
 static int			sock_fh = -1;
 static char			out_buf[BUF_SIZE + 1];
@@ -47,7 +48,6 @@ static int			in_len = 0;
 static jsmntok_t		json_token[JSON_TOKENS_MAX];
 static int			json_tokens;
 
-static int			jsonrpc_id;
 static block_t			block = { 0 };
 static int			nonce1_len = 0;
 static char			job_id[BUF_SIZE];
@@ -69,6 +69,8 @@ static float			speed_avg = -1;
 #define JSONRPC_ID_SUBSCRIBE	1
 #define JSONRPC_ID_AUTHORIZE	2
 #define JSONRPC_ID_EXTRANONCE	3
+#define JSONRPC_ID_FIRST_SUBMIT	4
+
 #define JSON_FIRST_CHAR(t)	in_buf[ json_token[t].start ]
 
 static void			send_authorize (void);
@@ -222,7 +224,8 @@ recv_target (int pos_params) {
 	unhex (target, SHA256_DIGEST_SIZE, json_string (pos_params + 1));
 	Log ("got target %s", &JSON_FIRST_CHAR (pos_params + 1));
 
-	send_extranonce ();
+	if (flag_extranonce)
+		send_extranonce ();
 }
 
 static void
@@ -434,7 +437,7 @@ send_subscribe (void) {
 	snprintf (buf, BUF_SIZE - 1,
 	    "{\"id\":%d,\"method\":\"mining.subscribe\",\"params\":"
 	    "[\"%s\",null,\"%s\",%d]}\n",
-	    (jsonrpc_id = JSONRPC_ID_SUBSCRIBE),
+	    JSONRPC_ID_SUBSCRIBE,
 	    miner_name, pool_host, pool_port);
 
 	sock_send (buf, strlen (buf));
@@ -447,7 +450,7 @@ send_authorize (void) {
 	snprintf (buf, BUF_SIZE - 1,
 	    "{\"id\":%d,\"method\":\"mining.authorize\",\"params\":"
 	    "[\"%s\",\"%s\"]}\n",
-	    (jsonrpc_id = JSONRPC_ID_AUTHORIZE),
+	    JSONRPC_ID_AUTHORIZE,
 	    worker_name, worker_pass);
 
 	sock_send (buf, strlen (buf));
@@ -460,7 +463,7 @@ send_extranonce (void) {
 	snprintf (buf, BUF_SIZE - 1,
 	    "{\"id\":%d,\"method\":\"mining.extranonce.subscribe\",\"params\":"
 	    "[]}\n",
-	    (jsonrpc_id = JSONRPC_ID_EXTRANONCE));
+	    JSONRPC_ID_EXTRANONCE);
 
 	sock_send (buf, strlen (buf));
 }
@@ -468,11 +471,12 @@ send_extranonce (void) {
 static void
 send_submit (char *job_time, char *nonce_2, char *sol) {
 	char		buf[BUF_SIZE];
+	static int	id = JSONRPC_ID_FIRST_SUBMIT;
 
 	snprintf (buf, BUF_SIZE - 1,
 	    "{\"id\":%d,\"method\":\"mining.submit\",\"params\":"
 	    "[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"]}\n",
-	    ++jsonrpc_id, worker_name, job_id, job_time, nonce_2, sol);
+	    id++, worker_name, job_id, job_time, nonce_2, sol);
 
 	sock_send (buf, strlen (buf));
 }
@@ -598,6 +602,8 @@ usage (char **argv) {
 	printf ("\nusage: %s\n", *argv);
 	printf ("\t[-l pool_host]\t\t# default %s\n", pool_host);
 	printf ("\t[-P pool_port]\t\t# default %d\n", pool_port);
+	printf ("\t[-M miner_name]\t\t# default %s\n", miner_name);
+	printf ("\t[-N use_extranonce]\t# default %d\n", flag_extranonce);
 	printf ("\t[-u worker_name]\t# default %s\n", worker_name);
 	printf ("\t[-p worker_pass]\t# detault %s\n", worker_pass);
 	printf ("\t[-d debug_level]\t# default %d\n", flag_debug);
@@ -633,6 +639,9 @@ arg_parse (int argc, char **argv) {
 			break;
 		case 'M':
 			strncpy (miner_name, argv[i], BUF_SIZE);
+			break;
+		case 'N':
+			flag_extranonce = atoi (argv[i]);
 			break;
 		case 'u':
 			strncpy (worker_name, argv[i], BUF_SIZE);

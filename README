@@ -26,3 +26,4 @@ Pools tested:
 - https://zec.suprnova.cc
 - https://www2.coinmine.pl/zec/
 - https://zec.nanopool.org
+- http://dwarfpool.com/zec (use -N 0 flag)
