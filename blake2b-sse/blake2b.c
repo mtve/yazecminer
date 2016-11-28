@@ -28,7 +28,8 @@
 
 #include "blake2b-round.h"
 
-ALIGN (64) static const uint64_t	blake2b_IV[8] = {
+ALIGN (64)
+static const uint64_t	blake2b_IV[8] = {
 	0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL,
 	0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL,
 	0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL,
@@ -41,11 +42,12 @@ blake2b_init_param (blake2b_state *S, const blake2b_param *P) {
 	const uint8_t	*v = (const uint8_t *)(blake2b_IV);
 	const uint8_t	*p = (const uint8_t *)(P);
 	uint8_t		*h = (uint8_t *) (S->h);
+	int		i;
 
 	/* IV XOR ParamBlock */
 	memset (S, 0, sizeof (blake2b_state));
 
-	for (int i = 0; i < BLAKE2B_OUTBYTES; ++i)
+	for (i = 0; i < BLAKE2B_OUTBYTES; ++i)
 		h[i] = v[i] ^ p[i];
 
 	return 0;
@@ -167,6 +169,82 @@ blake2b_final (blake2b_state *S, uint8_t *out, uint8_t outlen) {
 	blake2b_compress (S, S->buf);
 	memcpy (out, S->h, outlen);
 	return 0;
+}
+
+void
+blake2b_zcash (blake2b_state *S, uint32_t w3, uint8_t *out) {
+	__m128i		row1l, row1h,
+			row2l, row2h,
+			row3l, row3h,
+			row4l, row4h,
+			b0, b1,
+			t0, t1;
+
+#if defined(HAVE_SSSE3) && !defined(HAVE_XOP)
+	const __m128i	r16 =
+	    _mm_setr_epi8 (2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9);
+	const __m128i	r24 =
+	    _mm_setr_epi8 (3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10);
+#endif
+#if defined(HAVE_SSE41)
+	const __m128i	m0 = _mm_set_epi32 (w3, 0, 0, 0);
+	const __m128i	m1 = _mm_set_epi32 (0, 0, 0, 0);
+	const __m128i	m2 = _mm_set_epi32 (0, 0, 0, 0);
+	const __m128i	m3 = _mm_set_epi32 (0, 0, 0, 0);
+	const __m128i	m4 = _mm_set_epi32 (0, 0, 0, 0);
+	const __m128i	m5 = _mm_set_epi32 (0, 0, 0, 0);
+	const __m128i	m6 = _mm_set_epi32 (0, 0, 0, 0);
+	const __m128i	m7 = _mm_set_epi32 (0, 0, 0, 0);
+#else
+	const uint64_t	m0 = 0L;
+	const uint64_t	m1 = (uint64_t)w3 << 32;
+	const uint64_t	m2 = 0L;
+	const uint64_t	m3 = 0L;
+	const uint64_t	m4 = 0L;
+	const uint64_t	m5 = 0L;
+	const uint64_t	m6 = 0L;
+	const uint64_t	m7 = 0L;
+	const uint64_t	m8 = 0L;
+	const uint64_t	m9 = 0L;
+	const uint64_t	m10 = 0L;
+	const uint64_t	m11 = 0L;
+	const uint64_t	m12 = 0L;
+	const uint64_t	m13 = 0L;
+	const uint64_t	m14 = 0L;
+	const uint64_t	m15 = 0L;
+#endif
+
+	row1l = LOADU (&S->h[0]);
+	row1h = LOADU (&S->h[2]);
+	row2l = LOADU (&S->h[4]);
+	row2h = LOADU (&S->h[6]);
+	row3l = LOADU (&blake2b_IV[0]);
+	row3h = LOADU (&blake2b_IV[2]);
+	row4l = _mm_xor_si128 (LOADU (&blake2b_IV[4]),
+	    _mm_set_epi32 (0, 0, 0, 144));
+	row4h = _mm_xor_si128 (LOADU (&blake2b_IV[6]),
+	    _mm_set_epi32 (0, 0, -1, -1));
+	ROUND (0);
+	ROUND (1);
+	ROUND (2);
+	ROUND (3);
+	ROUND (4);
+	ROUND (5);
+	ROUND (6);
+	ROUND (7);
+	ROUND (8);
+	ROUND (9);
+	ROUND (10);
+	ROUND (11);
+	row1l = _mm_xor_si128 (row3l, row1l);
+	row1h = _mm_xor_si128 (row3h, row1h);
+	STOREU (&out[0], _mm_xor_si128 (LOADU (&S->h[0]), row1l));
+	STOREU (&out[16], _mm_xor_si128 (LOADU (&S->h[2]), row1h));
+	row2l = _mm_xor_si128 (row4l, row2l);
+	row2h = _mm_xor_si128 (row4h, row2h);
+	STOREU (&out[32], _mm_xor_si128 (LOADU (&S->h[4]), row2l));
+
+	*(uint16_t *)(&out[48]) = S->h[6] ^ *(uint16_t *)&row2h;
 }
 
 char *

@@ -100,14 +100,6 @@ die (char *str) {
 }
 
 static void
-store32 (uint8_t *c, int b) {
-	c[0] = b;
-	c[1] = b >> 8;
-	c[2] = b >> 16;
-	c[3] = b >> 24;
-}
-
-static void
 l1_init (l1_t *l1) {
 	memset (l1->cnt, 0, sizeof (l1->cnt));
 }
@@ -149,10 +141,11 @@ step0_add (int s, uint8_t *str) {
 	orig[s][STRING_WORDS - 1] = 0;
 	memcpy (orig[s], str, STRING_BYTES);
 #endif
+	/* everything is LE but bits are BE... f*ck that, BE all */
+
 	ASSERT (L1_BITS <= 16);
 	ptr = l1_addr (L1 (0), ((str[0] << 8) | str[1]) >> (16 - L1_BITS));
 
-	/* everything is LE but bits are BE... f*ck that, BE all */
 	k = MEM_DECR0 * WORD_BYTES - STRING_ALIGN_BYTES;
 	for (i = 0; i < MEM_WORDS1 - 1; i++) {
 		x = 0;
@@ -168,10 +161,9 @@ step0_add (int s, uint8_t *str) {
 void
 step0 (block_t *p) {
 	int			h, i;
-	blake2b_state		state0 = { 0 },
-				state;
-	blake2b_param		param = { 0 };
-	uint8_t			c[4], hash[HASH_BYTES];
+	blake2b_state		state;
+	blake2b_param		param;
+	uint8_t			hash[HASH_BYTES];
 
 	ASSERT (STRING_BITS % BYTE_BITS == 0);
 	ASSERT (STRING_ALIGN_BITS % BYTE_BITS == 0);
@@ -185,6 +177,7 @@ step0 (block_t *p) {
 	ASSERT (DIV_UP (SOLUTION_NUMS * STRING_IDX_BITS, BYTE_BITS) ==
 	    sizeof (pblock->solution));
 
+	memset (&param, 0, sizeof (param));
 	memcpy (param.personal, "ZcashPoW", 8);
 	ASSERT (WN < 256);
 	ASSERT (WK < 256);
@@ -193,17 +186,14 @@ step0 (block_t *p) {
 	param.digest_length = HASH_BYTES;
 	param.fanout = 1;
 	param.depth = 1;
-	blake2b_init_param (&state0, &param);
-	blake2b_update (&state0, (uint8_t *)pblock,
+	blake2b_init_param (&state, &param);
+	blake2b_update (&state, (uint8_t *)pblock,
 	    pblock->solsize - pblock->version);
 
 	l1_init (L1 (0));
 	ASSERT (STRING_BYTES == HASH_BYTES / HASH_STRINGS);
 	for (h = 0; h < HASHES; h++) {
-		store32 (c, h);
-		state = state0;
-		blake2b_update (&state, c, 4);
-		blake2b_final (&state, hash, HASH_BYTES);
+		blake2b_zcash (&state, h, hash);
 
 		for (i = 0; i < HASH_STRINGS; i++)
 			step0_add (h * HASH_STRINGS + i,
@@ -385,7 +375,7 @@ char *
 equihash_info (void) {
 	static char	buf[1024];
 
-	snprintf (buf, sizeof (buf), "word %d bytes, mem %d bytes",
-	    sizeof (word_t), sizeof (l1x) * 2);
+	snprintf (buf, sizeof (buf), "word %ld bytes, mem %ld bytes",
+	    (long)sizeof (word_t), (long)sizeof (l1x) * 2);
 	return buf;
 }

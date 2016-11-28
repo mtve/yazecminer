@@ -22,6 +22,7 @@
 
 #define INTERRUPT		1
 #define STAT_ALPHA		0.1
+#define NONCE_MAXLEN		24
 
 #define VERSION			"04000000"
 #define BUF_SIZE		4096
@@ -48,7 +49,7 @@ static int			in_len = 0;
 static jsmntok_t		json_token[JSON_TOKENS_MAX];
 static int			json_tokens;
 
-static block_t			block = { 0 };
+static block_t			block;
 static int			nonce1_len = 0;
 static char			job_id[BUF_SIZE];
 static uint8_t			target[SHA256_DIGEST_SIZE] = { 0 };
@@ -265,7 +266,7 @@ recv_subscribed (int pos_result) {
 
 	nonce1 = json_string (pos_result + 2);
 	nonce1_len = strlen (nonce1) / 2;
-	if (nonce1_len >= (int)sizeof (block.nonce))
+	if (nonce1_len >= NONCE_MAXLEN - 1)
 		die ("nonce1 is too big");
 	unhex (block.nonce, nonce1_len, nonce1);
 
@@ -510,7 +511,7 @@ above_target (void) {
 int
 solution (void) {
 	char		nonce2[BUF_SIZE];
-	char		solution[BUF_SIZE];
+	char		sol[BUF_SIZE];
 	char		job_time[sizeof (block.time) * 2 + 1];
 
 	stat_found++;
@@ -524,9 +525,11 @@ solution (void) {
 	hex (job_time, block.time, sizeof (block.time));
 	hex (nonce2, block.nonce + nonce1_len,
 	    sizeof (block.nonce) - nonce1_len);
-	hex (solution, block.solsize,
-	    sizeof (block.solsize) + sizeof (block.solution));
-	send_submit (job_time, nonce2, solution);
+	hex (sol, block.solsize, sizeof (block.solsize));
+	hex (sol + sizeof (block.solsize) * 2, block.solution,
+	    sizeof (block.solution));
+
+	send_submit (job_time, nonce2, sol);
 	stat_submitted++;
 
 	Log ("solution to %s submitted", job_id);
@@ -692,7 +695,7 @@ static void
 nonce2_print (void) {
 	int			i;
 
-	for (i = (int)sizeof (block.nonce) - 1; !block.nonce[i]
+	for (i = NONCE_MAXLEN - 1; !block.nonce[i]
 	    && i > nonce1_len; i--)
 		;
 	printf ("nonce2 ");
@@ -711,10 +714,10 @@ static void
 nonce2_incr (void) {
 	int		i;
 
-	for (i = nonce1_len; i < (int)sizeof (block.nonce); i++)
+	for (i = nonce1_len; i < NONCE_MAXLEN; i++)
 		if (++block.nonce[i])
 			break;
-	if (i == (int)sizeof (block.nonce))
+	if (i == NONCE_MAXLEN)
 		die ("exhaused nonce");
 }
 
@@ -761,6 +764,7 @@ main (int argc, char **argv) {
 	Log ("BLAKE2b implementation: %s", blake2b_info ());
 	Log ("equihash info: %s", equihash_info ());
 
+	memset (&block, 0, sizeof (block));
 	arg_parse (argc, argv);
 
 	if (flag_bench) {
