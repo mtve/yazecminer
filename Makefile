@@ -8,7 +8,7 @@ OBJ	+= blake2b-$(BLAKE)/blake2b.o
 
 CC	= gcc
 CFLAGS	= -march=native -W -Wall -O3 -g -I.
-LDFLAGS	= -static
+#LDFLAGS = -static
 #LDFLAGS += -lsocket -lnsl
 
 $(PROG): $(OBJ)
