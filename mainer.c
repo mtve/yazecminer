@@ -318,6 +318,11 @@ json_do_response (int id) {
 			Log ("error 21 stale job not accepted");
 			return;
 		}
+		if (id == JSONRPC_ID_EXTRANONCE) {
+			Log ("ignoring error on extranonce, "
+			    "run with flag -N 0 if disconnected");
+			return;
+		}
 		if (json_token[pos_error].type != JSMN_PRIMITIVE)
 			die ("not accepted");
 		if (JSON_FIRST_CHAR (pos_error) != 'n')
