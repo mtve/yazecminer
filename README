@@ -6,7 +6,7 @@ It's single-threaded on purpose, and uses 200 MB of memory now.
 The aim was the pure C miner with no dependencies, that works of either
 little-endian or big-endian platform (ultrasparc speed is so pathetic).
 
-You may find pool-emu.pl handy for debugging your miners.
+You may find pool-emu/ handy for debugging your miners.
 
 Code used:
 - BLAKE2b reference implementation from RFC 7693
