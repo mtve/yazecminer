@@ -1,6 +1,6 @@
 This is backend for javascript (WebAssembly) miner.
 
-It connects to a pool, and provide jobs to miners connected by websockets.
+It connects to a pool, and provides jobs to miners connected by websockets.
 
 Create configuration file (or change settings in the beginning of server.pl):
   POOL_WORKER_NAME = <your wallet t-address>
