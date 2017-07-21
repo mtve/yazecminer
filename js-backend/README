@@ -1,5 +1,8 @@
-Create configuration file (or change settings in the beginning of server.pl):
+This is backend for javascript (WebAssembly) miner.
 
+It connects to a pool, and provide jobs to miners connected by websockets.
+
+Create configuration file (or change settings in the beginning of server.pl):
   POOL_WORKER_NAME = <your wallet t-address>
   HTTP_HIDDEN_ADMIN_PAGE = <some secure keyword>
   LOG_LEVEL = <'info' to reduce log details>
