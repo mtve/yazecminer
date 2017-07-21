@@ -144,7 +144,7 @@ sub ID_EXTRANONCE(){ 3 }
 sub stratum_tx($) {
 	my ($json) = @_;
 
-	D " send " . $JSON->encode ($json);
+	D "send " . $JSON->encode ($json);
 	$stratum_h->push_write (json => $json);
 	$stratum_h->push_write ("\x0d\x0a");
 }
@@ -228,7 +228,7 @@ sub ban {
 sub stratum_read {
 	my ($json) = @_;
 
-	D " got " . $JSON->encode ($json);
+	D "got " . $JSON->encode ($json);
 	if (!$json->{id}) {
 		# notify
 		my $method = $json->{method} or die 'no method';
