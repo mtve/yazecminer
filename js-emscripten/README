@@ -1,0 +1,6 @@
+This is c code ported to emscripten.
+
+You will need WebAssembly toolchain to compile:
+  http://webassembly.org/getting-started/developers-guide/
+
+Already compiled "binaries" .js and .wasm are at ../js-backend/static/
