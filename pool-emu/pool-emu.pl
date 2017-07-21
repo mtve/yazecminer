@@ -18,11 +18,19 @@ my $RESERVED	= "00" x 32;
 my $TIME	= "00" x 4;
 my $BITS	= "00" x 4;
 
-$TARGET	=	'7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
-$PREVHASH =	'20d6248dde17eb4d7663a055c4a972706547440bdceafb47ff05511900000000';
-$MERKLEROOT =	'a3f34f8722f0af6fc0f0d0271533de88eb4fe27d99d843128306d6d285b404f4';
-$TIME = '7da0bf58';
-$BITS = 'c19d001d';
+#$TARGET=	'7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+#$PREVHASH =	'20d6248dde17eb4d7663a055c4a972706547440bdceafb47ff05511900000000';
+#$MERKLEROOT =	'a3f34f8722f0af6fc0f0d0271533de88eb4fe27d99d843128306d6d285b404f4';
+#$TIME = '7da0bf58';
+#$BITS = 'c19d001d';
+
+$TARGET = "00083126e978d4fdf3b645a1cac083126e978d4fdf3b645a1cac083126e978d4";
+
+$PREVHASH	= "361b2757e8ca6adbc90ff2965580545dc749a9dbf731d50f6517af1f00000000";
+$MERKLEROOT	= "c0be5cdab2a7678a9401f2014f92b9bc395fd4559a66b72d45303fe50bacdc22";
+$TIME = "22dc7059";
+$BITS = "8280291c";
+$NONCE_1 = "0159f1901f" . "b22da6ddc113";
 
 my $q_el  = qr/"[^"]*"|\d+|true|false|null/;
 my $q_els = qr/$q_el(,$q_el)*/;

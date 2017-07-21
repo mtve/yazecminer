@@ -1,0 +1,15 @@
+Create configuration file (or change settings in the beginning of server.pl):
+
+  POOL_WORKER_NAME = <your wallet t-address>
+  HTTP_HIDDEN_ADMIN_PAGE = <some secure keyword>
+  LOG_LEVEL = <'info' to reduce log details>
+
+Optionally, install perl modules AnyEvent and Protocol::WebSocket:
+- in FreeBSD by ports devel/p5-AnyEvent and www/p5-Protocol-WebSocket
+- in CentOS by "yum -y install perl-AnyEvent perl-Protocol-WebSocket"
+
+Run script:
+  perl server.pl
+
+The recommended way to run it is under separate user account with limited
+permissions, with only log file available to write.

@@ -25,7 +25,7 @@
 #define NONCE_MAXLEN		24
 
 #define VERSION			"04000000"
-#define BUF_SIZE		4096
+#define BUF_SIZE		8192
 #define JSON_TOKENS_MAX		64
 #define TIME_STAT_PERIOD	15
 
@@ -713,6 +713,7 @@ static void
 nonce2_reset (void) {
 	memset (block.nonce + nonce1_len, 0,
 	    sizeof (block.nonce) - nonce1_len);
+	block.nonce[nonce1_len] = 0x80;
 }
 
 static void
