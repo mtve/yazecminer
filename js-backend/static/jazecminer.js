@@ -1916,7 +1916,7 @@ function _emscripten_asm_const_v(code) {
 
 STATIC_BASE = Runtime.GLOBAL_BASE;
 
-STATICTOP = STATIC_BASE + 205558800;
+STATICTOP = STATIC_BASE + 205558848;
 /* global initializers */  __ATINIT__.push();
 
 
@@ -1925,7 +1925,7 @@ memoryInitializer = Module["wasmJSMethod"].indexOf("asmjs") >= 0 || Module["wasm
 
 
 
-var STATIC_BUMP = 205558800;
+var STATIC_BUMP = 205558848;
 Module["STATIC_BASE"] = STATIC_BASE;
 Module["STATIC_BUMP"] = STATIC_BUMP;
 
