@@ -11,8 +11,8 @@ c/ is portable C sources to produce binary for your platform.
 js-emscripten/ is a port to emscipten for mining in WebAssembly-compatible
 browser
 
-js-backend/ is a server-side support for browser mining, supports many
-sessions (tested up to 25K sessions).
+js-backend/ is a server-side support for browser mining, allows many
+sessions (tested up to 25K sessions, many thanks to K.)
 
 pool-emu/ may be handy for debugging your miners.
 
