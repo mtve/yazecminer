@@ -12,7 +12,7 @@ js-emscripten/ is a port to emscipten for mining in WebAssembly-compatible
 browser
 
 js-backend/ is a server-side support for browser mining, allows many
-sessions (tested up to 30K sessions, many thanks to K.)
+sessions (tested up to 30K sessions, many thanks to kosjak1@github)
 
 pool-emu/ may be handy for debugging your miners.
 
