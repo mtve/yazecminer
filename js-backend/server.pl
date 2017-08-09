@@ -55,6 +55,7 @@ if (@ARGV) {
 			or die "bad config line $.: $_";
 		$k = uc $k;
 		exists $CFG{$k} or die "bad config parameter $k\n";
+		-t && print "$k = $v\n";
 		$CFG{$k} = $v;
 	}
 }
@@ -166,7 +167,9 @@ sub stratum_got_target {
 sub stratum_got_job {
 	my ($params) = @_;
 
-	@$params == 8 or die 'bad number of job params';
+	@$params == 8 or
+	(@$params == 9 && !$params->[8]) or
+		die 'bad number of job params';
 	I "job @$params";
 	$JOB_ID = $params->[0];
 	$JOB = join '', @$params[1..6], $NONCE_1;
@@ -251,6 +254,10 @@ sub stratum_read {
 			I "stale job $json->{id}";
 			return;
 		}
+		if ($json->{id} == ID_EXTRANONCE) {
+			I 'extranonce is not accepted, ignoring';
+			return;
+		}
 		ban ($json->{id}, $json->{error});
 		die "got error @{ $json->{error} }";
 	}
@@ -282,7 +289,7 @@ sub stratum_tick {
 		on_connect	=> sub {
 			local *__ANON__ = 'stratum.on_connect';
 
-			I 'connected';
+			I "connected to $CFG{POOL_HOST}:$CFG{POOL_PORT}";
 			$STRATUM_STATE = 'connected';
 			stratum_tx {
 				id	=> ID_SUBSCRIBE,

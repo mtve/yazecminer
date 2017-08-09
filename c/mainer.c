@@ -231,8 +231,14 @@ recv_target (int pos_params) {
 
 static void
 recv_job (int pos_params) {
-	if (json_token[pos_params].size != 8)
-		die ("mining.notify params size is not 8");
+        if (json_token[pos_params].size == 8)
+		; /* normal */
+	else if (json_token[pos_params].size == 9 &&
+              json_token[pos_params + 9].type == JSMN_PRIMITIVE &&
+              JSON_FIRST_CHAR (pos_params + 9) == 'f')
+		; /* also normal at madmining.club */
+	else
+		die ("mining.notify params size is not 8 or special 9");
 
 	if (!json_is_string (pos_params + 2, VERSION))
 		die ("mining.notify bad version");
