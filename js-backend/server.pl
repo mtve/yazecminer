@@ -197,7 +197,7 @@ sub stratum_subscribed {
 	my $result = $json->{result} or die 'no result';
 	$NONCE_1 = $result->[1];
 	I "nonce1 $NONCE_1";
-	die 'nonce1 is too long' if length $NONCE_1 > (32-6-4)*2;
+	die 'nonce1 is too long' if length $NONCE_1 > (32-12-6-2)*2;
 	$STRATUM_STATE = 'subscribed';
 
 	stratum_tx {
