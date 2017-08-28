@@ -532,7 +532,7 @@ sub http {
 	my $req = $1 || 'index.html';
 	D "$h->{my_id} get $req";
 
-	if ($req =~ /^[a-z0-9.]+$/i && -f "static/$req") {
+	if ($req =~ /^[a-z0-9\.]+$/i && -f "static/$req") {
 		open my ($f), "static/$req" or die "open: $!";
 		binmode $f or die;
 		my $c = do { local $/; <$f> };
