@@ -84,6 +84,13 @@ my $BAN_TEXT = 'you have been banned for providing broken solutions';
 
 	my $jc = \&AnyEvent::Handle::json_coder;
 	*AnyEvent::Handle::json_coder = sub() { $jc->()->canonical ([1]) };
+
+	$jc->();
+	if (exists &{"JSON::PP::incr_skip"}) {
+		-t && print "fixing JSON::PP\n";
+		my $is = \&JSON::PP::incr_skip;
+		*JSON::PP::incr_skip = sub { &$is; $_[0]->{incr_parsing} = 0 };
+	}
 }
 
 $AnyEvent::Log::LOG->log_to_file ($CFG{LOG_FILE}) if $CFG{LOG_FILE};
