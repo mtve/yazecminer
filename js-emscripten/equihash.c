@@ -1,6 +1,8 @@
 #include "blake2b.h"
 #include "equihash.h"
 
+#define BLAKE2_OPT		0
+
 #define DEBUG			0
 #define printf(...)		((void)0)
 #define fflush(...)		((void)0)
@@ -92,6 +94,7 @@ static word_t		orig[STRINGS][STRING_WORDS];
 
 static void
 die (char *str) {
+	(void)str;
 	printf ("die: %s\n", str);
 	exit (1);
 }
@@ -190,8 +193,14 @@ step0 (block_t *p) {
 	l1_init (L1 (0));
 	ASSERT (STRING_BYTES == HASH_BYTES / HASH_STRINGS);
 	for (h = 0; h < HASHES; h++) {
+#if BLAKE2_OPT
 		blake2b_zcash (&state, h, hash);
+#else
+		blake2b_state	state2 = state;
 
+		blake2b_update (&state2, (uint8_t *)&h, 4); /* LE only!!! */
+		blake2b_final (&state2, hash, HASH_BYTES);
+#endif
 		for (i = 0; i < HASH_STRINGS; i++)
 			step0_add (h * HASH_STRINGS + i,
 			    hash + i * STRING_BYTES);
