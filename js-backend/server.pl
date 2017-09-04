@@ -100,7 +100,7 @@ sub LOG { my $l = shift; AnyEvent::log $l, ((caller 2)[3] || 'main') . " @_" }
 sub D($) { LOG (debug => @_) }
 sub I($) { LOG (info  => @_) }
 sub E($) { LOG (error => @_) }
-
+sub F($) { -t && print "fatal error: @_\n"; LOG (fatal => @_) }
 my $EXIT = AnyEvent->condvar;
 
 #
@@ -116,7 +116,7 @@ my $stat_timer = AnyEvent->timer (
 
 		$STAT{'accepted sol/s'} = sprintf '%.4f', 
 		    ($STAT{$GOAL} || 0) / $CFG{STAT_INTERVAL};
-		I "$_ = $STAT{$_}\n" for sort keys %STAT;
+		I "$_ = $STAT{$_}" for sort keys %STAT;
 
 		%STAT_PREV = %STAT;
 		%STAT = %CUR_IP = %CUR_CLIENT = %CUR_BEST = ();
@@ -204,7 +204,7 @@ sub stratum_subscribed {
 	my $result = $json->{result} or die 'no result';
 	$NONCE_1 = $result->[1];
 	I "nonce1 $NONCE_1";
-	die 'nonce1 is too long' if length $NONCE_1 > (32-6-2)*2;
+	F 'nonce1 is too long' if length $NONCE_1 > (32-6-2)*2;
 	$STRATUM_STATE = 'subscribed';
 
 	stratum_tx {
